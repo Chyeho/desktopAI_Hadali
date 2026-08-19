@@ -1,0 +1,25 @@
+[project]
+name = "desktopai-hadali"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "openai",
+    "live2d-py",
+    "pyside6",
+    "pyopengl",
+    "glfw",
+    "numpy",
+]
+
+# 国内镜像源配置（替换默认源）
+[tool.uv]
+
+# 设置默认镜像源（优先从这里下载）
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+
+# 添加备用镜像源（如阿里云，防止单一源故障）
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
