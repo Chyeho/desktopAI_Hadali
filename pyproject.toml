@@ -9,8 +9,12 @@ dependencies = [
     "live2d-py",
     "pyside6",
     "pyopengl",
-    "glfw",
     "numpy",
+    "edge-tts>=7.2.8",
+    "sounddevice>=0.5.6",
+    "dashscope>=1.27.1",
+    "soundfile>=0.14.0",
+    "soxr>=1.1.0",
 ]
 
 # 国内镜像源配置（替换默认源）

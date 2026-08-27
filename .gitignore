@@ -15,3 +15,14 @@ wheels/
 
 # 运行时生成文件
 screenshot.png
+*.log
+
+# TTS 模型与缓存数据（genie 已弃用，均为大体积文件，不纳入版本管理）
+CharacterModels/
+GenieTTSData/
+
+# IDE / 系统文件
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
