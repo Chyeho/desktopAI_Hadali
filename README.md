@@ -1,11 +1,15 @@
 # DesktopAI_Hadali
 
-基于 PySide6 + Live2D 的桌面 AI 助手。 AI 助手形象为 Live2D 模型（固定神态动作），内置 AI 聊天功能（DeepSeek 大模型）。
+基于 PySide6 + Live2D 的桌面情感陪伴 AI 助手。AI 助手形象为 Live2D 模型（固定神态动作），内置 AI 聊天（langchain 驱动，支持任意 OpenAI 协议大模型）、基础工具调用与多 agent 模式扩展通道。
 
 ## 功能特性
 
 - Live2D 桌宠形象，自动适配窗口大小、随窗口等比缩放
-- 与 AI 角色对话（哈达莉），流式显示回复
+- 与 AI 角色对话（哈达莉），回复逐字打字机显示
+- AI 具备基础工具调用能力：本机时间 / 天气查询 / 联网搜索
+- 对话历史持久化：关闭程序后 AI 仍记得之前的对话
+- 情感标签驱动 live2d 表情（表情资源待接入，链路已打通）
+- 多 agent 模式扩展通道（当前为情感陪伴主模式，办公模式预留）
 - 单轮对话框交互：输入 → 思考中 → 回复 → 点击恢复输入
 - 半透明聊天框，支持拖拽窗口、滚轮缩放
 - 右键菜单：最小化到托盘 / 退出程序
@@ -20,10 +24,12 @@
    uv sync
    ```
 
-2. 在项目根目录创建 `.env` 文件，写入 API Key（DeepSeek 密钥）：
+2. 在项目根目录创建 `.env` 文件，写入大模型连接参数（默认 DeepSeek，可换任意 OpenAI 协议端）：
 
    ```
-   API_KEY=sk-你的DeepSeek密钥
+   API_KEY=sk-你的llm密钥
+   BASE_URL=https://api.deepseek.com/v1
+   MODEL=deepseek-chat
    ```
 
 3. 启动程序：
@@ -34,12 +40,29 @@
 
 ## 项目结构
 
-- `main.py`      程序主入口
-- `chatbot.py`   AI 对话逻辑（自动读取 `.env` 中的 `API_KEY`）
-- `chatbotUI.py` Live2D 桌宠界面
-- `chatbotTTS.py` 语音合成模块（TTS，qwen3-tts / edge-tts）
-- `resources.py` 资源目录常量
-- `Resources/`   Live2D 模型资源
+- `main.py`        程序主入口
+- `chatbot.py`     AI 对话门面（初始化 + 对外接口，核心逻辑在 `agent/`）
+- `agent/`         AI 对话核心：chat_agent（工具调用循环）/ tool_manager（工具管理）/ expression_driver（表情驱动）/ mode_configs（模式配置）
+- `modelFactory/`  模型工厂（langchain ChatOpenAI，工厂模式）
+- `tools/common/`  公共工具（本机时间 / 天气 / 联网搜索）
+- `utils/`         工具集（配置 / 日志 / 路径 / 提示词加载）
+- `prompts/`       系统提示词文本（不硬编码在代码中）
+- `config/`        配置文件（提示词路径等 yaml）
+- `chatbotUI.py`   Live2D 桌宠界面
+- `chatbotTTS.py`  语音合成模块（TTS，qwen3-tts / edge-tts）
+- `resources.py`   资源目录常量
+- `Resources/`     Live2D 模型资源
+
+## AI 对话逻辑与 agent 模式
+
+**对话流程**：用户输入 → AIWorker 后台线程处理（模型思考 → 按需调用工具 → 解析回复）→ 聊天框打字机逐字显示。
+
+- **模型工厂**：连接参数（`API_KEY` / `BASE_URL` / `MODEL`）从 `.env` 读取，生产 langchain `ChatOpenAI`，支持 DeepSeek、通义兼容端、本地 vLLM 等任意 OpenAI 协议模型
+- **工具调用**：手写轻量循环（`bind_tools`，单次对话最多 6 轮），模型遇到实时信息（时间 / 天气 / 新闻等）时自动调用工具后作答，不使用 ReAct 等重型框架
+- **结构化输出**：模型最终回复为严格 JSON `{"emotion": "...", "reply": "..."}`，`emotion`（9 种情感标签）驱动 live2d 表情（待接入），`reply` 用于聊天框显示与 TTS 播报
+- **对话记忆**：历史持久化到 `chat_history/default.json`，重启自动加载，仅保留最近 30 条滑动窗口
+
+**agent 模式切换**：每个模式一份配置（系统提示词 / 工具白名单 / 模型生成参数），注册在 `agent/mode_configs/`。当前仅实现情感陪伴主模式（emotion）；桌面办公模式（office）为预留 stub。代码层调用 `chatbot.switch_mode("office")` 即可切换，UI 右键菜单接入待开发。新增模式只需：写提示词 → 加工具 → 加模式配置 → 注册。
 
 ## TTS 语音合成方案
 
@@ -72,8 +95,12 @@
 # 环境变量配置文件
 # 用于存储敏感信息，如API密钥、数据库连接等
 
-# 1.API密钥
+# 1.API密钥（支持任意 OpenAI 协议大模型：DeepSeek / 通义兼容端 / 本地 vLLM 等）
 API_KEY=sk-你的llm密钥
+# 1.1 大模型接口地址（OpenAI 兼容端点）
+BASE_URL=https://api.deepseek.com/v1
+# 1.2 大模型名称
+MODEL=deepseek-chat
 
 # 2.语音合成(TTS)配置项
 # TTS 运行模式（demo / dev）：

@@ -2,10 +2,10 @@
 Live2D 桌宠 AI 聊天界面
 
 桌面 UI ： Live2D 形象（固定神态动作）。
-聊天交互为单轮对话框模式：你：输入 → 哈达莉思考中...... → 哈达莉：流式回复 → 点击恢复输入。
+聊天交互为单轮对话框模式：你：输入 → 哈达莉思考中...... → 哈达莉：逐字打字机回复 → 点击恢复输入。
 
 四大组件：
-- AIWorker      ：后台线程，调用大模型接口（避免阻塞 UI），支持流式回传
+- AIWorker      ：后台线程，完成对话/工具调用/情感驱动后一次性回传完整回复（避免阻塞 UI）
 - ChatBox       ：单轮对话聊天框，三态状态机（input / thinking / reply）
 - Live2DWidget  ：OpenGL 渲染 Live2D 形象，自动适配窗口居中，支持拖拽/缩放/右键
 - ImageWindow   ：无边框透明主窗口，组装形象与聊天框，提供系统托盘与右键菜单
@@ -15,7 +15,7 @@ import os
 import numpy as np            # 数值计算：把 glReadPixels 读回的字节流转成数组分析像素
 import OpenGL.GL as gl        # OpenGL 底层 API：读像素（包围盒检测、拖拽判定）
 import live2d.v3 as live2d    # live2d-py 第三方封装（v3 版 Cubism SDK）
-from PySide6.QtCore import QPoint, Qt, QThread, QTimerEvent, Signal
+from PySide6.QtCore import QPoint, Qt, QThread, QTimer, QTimerEvent, Signal
 from PySide6.QtGui import (
     QBrush, QColor, QCursor, QFontMetrics, QIcon, QKeyEvent, QMouseEvent,
     QPainter, QPixmap, QTextBlockFormat, QTextCursor,
@@ -37,35 +37,30 @@ MODEL_PATH = os.path.join(
 
 
 class AIWorker(QThread):
-    """处理大模型请求的工作线程（支持流式回传）
+    """处理大模型请求的工作线程（后台完成对话 + 工具调用 + 情感驱动）
 
     为什么需要线程？
-    - AI 网络请求是阻塞操作，若放在主线程（UI 线程），界面会卡死无法响应
-    - 继承 QThread 后，run() 在独立线程执行，完成后通过信号把结果发回主线程
+    - AI 网络请求（含工具调用循环）是阻塞操作，若放在主线程（UI 线程），界面会卡死
+    - 继承 QThread 后，run() 在独立线程执行，期间聊天框保持“哈达莉思考中......”；
+      处理完成后通过 response_ready 信号把完整回复发回主线程，由聊天框逐字显示
     """
 
-    chunk_received = Signal(str)   # 自定义信号：流式生成的一块内容
-    response_ready = Signal(str)   # 自定义信号：完整回复（结束）
+    response_ready = Signal(str)   # 自定义信号：完整回复（JSON 已解析为纯文本）
 
-    def __init__(self, user_input):
+    def __init__(self, user_input, live2d_model=None):
         super().__init__()
         self.user_input = user_input
-        self.full_reply = ""       # 累积本次对话的完整回复
+        self.live2d_model = live2d_model   # live2d 模型对象，供情感驱动表情（可为 None）
 
     def run(self):
         """QThread 启动后自动执行的方法（子线程环境）"""
-        def on_chunk(content):
-            """流式回调：每生成一块内容就累加并通过信号发射给主线程"""
-            self.full_reply += content
-            self.chunk_received.emit(content)
-
         try:
-            chatbot.chat_with_model(self.user_input, on_chunk=on_chunk)
-            self.response_ready.emit(self.full_reply)
+            reply = chatbot.chat_with_model(self.user_input, live2d_model=self.live2d_model)
+            self.response_ready.emit(reply)
         except Exception as e:
             import traceback
             traceback.print_exc()
-            # 流式调用中途出错时，chatbot 模块可能已收集部分回复，优先返回已生成内容
+            # 处理中途出错时，chatbot 模块可能已收集部分回复，优先返回已生成内容
             partial = getattr(chatbot, 'last_partial_reply', '')
             if partial:
                 self.response_ready.emit(partial)
@@ -79,7 +74,7 @@ class ChatBox(QTextEdit):
     状态机：
     - input   ：左上角绘制"你："装饰，可编辑，回车触发 submit 信号
     - thinking：显示"哈达莉思考中......"，只读
-    - reply   ：显示"哈达莉：回复内容"（流式追加），只读，点击后恢复 input
+    - reply   ：显示"哈达莉：回复内容"（QTimer 逐字打字机），只读，点击后恢复 input
     """
 
     submit = Signal(str)  # 自定义信号：用户输入内容（已去除前后空白）
@@ -102,11 +97,19 @@ class ChatBox(QTextEdit):
         self.state = 'input'        # input / thinking / reply 三态
         self.allow_reset = True     # 回复完成后才允许点击恢复输入（防止思考中误触）
         self.prefix_visible = True  # 输入态绘制"你："装饰（AI 回复时隐藏）
+        # 回复逐字显示（打字机效果）：QTimer 定时把完整回复逐字插入
+        self._typing_timer = QTimer(self)
+        self._typing_timer.timeout.connect(self._typing_tick)
+        self._typing_queue = ""     # 待逐字显示的完整回复
+        self._typing_pos = 0        # 已显示到的字符位置
+        self.TYPE_INTERVAL = 15     # 打字机定时间隔（毫秒）
+        self.TYPE_CHARS = 2         # 每个 tick 追加的字符数
         self.to_input_state()
 
     # ---------- 状态切换 ----------
     def to_input_state(self):
         """等待用户输入：左上角绘制"你："（装饰，不可删除），可编辑"""
+        self._typing_timer.stop()  # 停止上一轮可能仍在进行的打字机
         self.state = 'input'
         self.allow_reset = True
         self.prefix_visible = True
@@ -122,32 +125,37 @@ class ChatBox(QTextEdit):
 
     def to_thinking_state(self):
         """AI 思考中：显示"哈达莉思考中......"，禁止输入"""
+        self._typing_timer.stop()  # 停止上一轮打字机
         self.state = 'thinking'
         self.allow_reset = False
         self.prefix_visible = False
         self.setPlainText("哈达莉思考中......")
         self.setReadOnly(True)
 
-    def append_ai_chunk(self, content):
-        """追加流式回复内容（首次调用时自动切换为回复状态）"""
-        if self.state != 'reply':
-            self.state = 'reply'
-            self.prefix_visible = False
-            self.setPlainText("哈达莉：")
-        # 把光标移到末尾再插入，实现"逐字追加"效果
-        self.moveCursor(QTextCursor.MoveOperation.End)
-        self.insertPlainText(content)
-        # 滚动到底部，保证最新内容可见
-        vbar = self.verticalScrollBar()
-        vbar.setValue(vbar.maximum())
-
     def finalize_ai_reply(self, full_text):
-        """回复完成：确保显示完整内容，并允许点击恢复输入"""
+        """回复就绪：切换回复态，并用打字机效果逐字显示完整内容"""
         self.state = 'reply'
         self.prefix_visible = False
-        self.setPlainText(f"哈达莉：{full_text}")
         self.setReadOnly(True)
-        self.allow_reset = True
+        # 重置打字机：先只显示前缀，逐字追加由 QTimer 驱动
+        self.setPlainText("哈达莉：")
+        self.allow_reset = False   # 打字未完成前不允许点击恢复输入
+        self._typing_queue = full_text
+        self._typing_pos = 0
+        self._typing_timer.start(self.TYPE_INTERVAL)
+
+    def _typing_tick(self):
+        """打字机定时回调：每次追加 TYPE_CHARS 个字符，直到显示完整回复"""
+        if self._typing_pos >= len(self._typing_queue):
+            self._typing_timer.stop()
+            self.allow_reset = True   # 回复显示完毕，允许点击恢复输入
+            return
+        self._typing_pos = min(self._typing_pos + self.TYPE_CHARS, len(self._typing_queue))
+        self.setPlainText(f"哈达莉：{self._typing_queue[:self._typing_pos]}")
+        # 滚动到底部，保证最新内容可见
+        self.moveCursor(QTextCursor.MoveOperation.End)
+        vbar = self.verticalScrollBar()
+        vbar.setValue(vbar.maximum())
 
     # ---------- 事件 ----------
     def paintEvent(self, event):
@@ -498,17 +506,12 @@ class ImageWindow(QWidget):
         # 上一轮 AI 还在回复时禁止新一轮输入
         if self.ai_worker and self.ai_worker.isRunning():
             return
-        # 切换为思考中状态，禁止输入
+        # 切换为思考中状态，禁止输入（思考期间一直显示“哈达莉思考中......”）
         self.chat_box.to_thinking_state()
-        # 创建并启动 AI 工作线程（连接两个信号：流式块 / 完成）
-        self.ai_worker = AIWorker(user_input)
-        self.ai_worker.chunk_received.connect(self.on_ai_chunk)
+        # 创建并启动 AI 工作线程，传入 live2d 模型对象供情感驱动表情
+        self.ai_worker = AIWorker(user_input, live2d_model=self.live2d_widget.model)
         self.ai_worker.response_ready.connect(self.on_ai_response)
         self.ai_worker.start()
-
-    def on_ai_chunk(self, content):
-        """处理 AI 流式回复块：实时显示到聊天框"""
-        self.chat_box.append_ai_chunk(content)
 
     def on_ai_response(self, response):
         """处理 AI 完整回复事件：显示最终内容并同步语音播报"""

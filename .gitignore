@@ -16,6 +16,13 @@ wheels/
 # 运行时生成文件
 screenshot.png
 *.log
+logs/
+
+# 运行时数据（对话历史，含用户聊天记录，禁止提交）
+chat_history/
+
+# 本地模型缓存（huggingface 等）
+.cache/
 
 # TTS 模型与缓存数据（genie 已弃用，均为大体积文件，不纳入版本管理）
 CharacterModels/
