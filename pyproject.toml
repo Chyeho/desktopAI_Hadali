@@ -21,6 +21,13 @@ dependencies = [
     "langchain-openai>=1.6.0",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 # 国内镜像源配置（替换默认源）
 [tool.uv]
 
