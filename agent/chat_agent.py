@@ -242,7 +242,8 @@ class ChatAgent:
 
             # 4. 解析最终回复：emotion 驱动 live2d 表情，reply 用于聊天框展示与 TTS 播报
             emotion, reply = parse_reply_json(final_content)
-            drive_expression(emotion, live2d_model)
+            # live2d_model 实为 Live2DWidget 实例（UI 层传入），通过其信号跨线程请求播放表情动作
+            drive_expression(emotion, live2d_widget=live2d_model)
 
             self.history.save()
             return {"emotion": emotion, "reply": reply}

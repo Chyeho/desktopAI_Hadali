@@ -11,6 +11,7 @@ Live2D 桌宠 AI 聊天界面
 - ImageWindow   ：无边框透明主窗口，组装形象与聊天框，提供系统托盘与右键菜单
 """
 import os
+import time
 
 import numpy as np            # 数值计算：把 glReadPixels 读回的字节流转成数组分析像素
 import OpenGL.GL as gl        # OpenGL 底层 API：读像素（包围盒检测、拖拽判定）
@@ -28,12 +29,16 @@ from PySide6.QtWidgets import (
 
 import chatbot
 import chatbotTTS
+from utils.logger_handler import logger
 
 # Live2D 模型路径（相对本文件所在目录，保证任意工作目录启动都能找到）
 MODEL_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "Resources", "v3", "hiyori", "hiyori_free_t08.model3.json",
 )
+
+# 表情动作播放结束后，参数平滑过渡回常态的时长（秒）；避免一播完就跳变回中性
+NEUTRAL_RETURN_DURATION = 1.5
 
 
 class AIWorker(QThread):
@@ -209,6 +214,9 @@ class Live2DWidget(QOpenGLWidget):
     - 像素级交互：通过 glReadPixels 判断鼠标是否落在模型上（拖拽/点击）
     """
 
+    # 跨线程请求播放表情动作（driver 在子线程 emit → 主线程槽执行 StartMotion）
+    request_play_motion = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         # 透明背景，便于叠加在无边框透明窗口上
@@ -226,6 +234,12 @@ class Live2DWidget(QOpenGLWidget):
         self.is_in_la = False
         self.setMinimumSize(200, 250)
         self.resize(400, 500)
+        # 情感表情动画状态
+        self._emotion_motion_playing = False   # 情感动作播放中（播完由 timerEvent 检测）
+        self._return_transition = None          # 回常态过渡 {from, to, t, duration}
+        self._last_frame_time = time.perf_counter()
+        # 跨线程信号→主线程槽：播放表情动作组（避免子线程操作 OpenGL）
+        self.request_play_motion.connect(self._do_play_emotion_motion)
 
     # ---------- OpenGL 三钩子（Qt 自动按序调用） ----------
     def initializeGL(self) -> None:
@@ -254,9 +268,14 @@ class Live2DWidget(QOpenGLWidget):
             self.model.SetOffset(self.offset_x, self.offset_y)
 
     def paintGL(self):
-        """每帧绘制：清屏 → 更新模型状态 → 绘制模型"""
+        """每帧绘制：清屏 → 更新模型状态 → 写入回常态过渡参数 → 绘制模型"""
+        now = time.perf_counter()
+        dt = now - self._last_frame_time
+        self._last_frame_time = now
         live2d.clearBuffer()   # 清空颜色缓冲（保持透明背景）
         self.model.Update()    # 更新模型状态（呼吸、眨眼、动作动画进度）
+        # 关键：Update 之后、Draw 之前写入过渡参数，否则会被 Update 覆盖
+        self._update_return_transition(dt)
         self.model.Draw()      # 绘制模型到当前帧缓冲
         if self.need_fit:
             self.do_fit()      # 初始适配窗口（读像素 → 调缩放/偏移）
@@ -339,10 +358,89 @@ class Live2DWidget(QOpenGLWidget):
             except Exception:
                 pass
             self.motion_started = True
+        # 情感动作播放结束后，启动平滑过渡回常态（避免一播完就跳变）
+        if (self._emotion_motion_playing and self.model
+                and self.model.IsMotionFinished()):
+            self._emotion_motion_playing = False
+            self._start_return_to_neutral(NEUTRAL_RETURN_DURATION)
         # 每帧更新"鼠标是否位于模型区域内"（供拖拽判断），避免在 mousePress 时读像素
         widget_pos = self.mapFromGlobal(QCursor.pos())
         self.is_in_la = self.is_in_l2d_area(int(widget_pos.x()), int(widget_pos.y()))
         self.update()  # 请求重绘（触发 paintGL）
+
+    # ---------- 情感表情动画驱动（主线程槽） ----------
+    def _do_play_emotion_motion(self, group: str) -> None:
+        """播放指定动作组；动作结束后由 timerEvent 检测并启动回常态过渡
+
+        主线程槽：由 request_play_motion 信号触发（driver 可在子线程 emit）。
+        """
+        if self.model is None:
+            return
+        # 取消正在进行的回常态过渡（新动作直接接管，过渡中的参数值作为新动作起点）
+        self._return_transition = None
+        self._emotion_motion_playing = True
+        # 动作播放期间临时关闭自动眨眼/呼吸，避免与动作曲线打架
+        try:
+            self.model.SetAutoBlinkEnable(False)
+            self.model.SetAutoBreathEnable(False)
+        except Exception:
+            pass
+        try:
+            self.model.StartMotion(group, 0, live2d.MotionPriority.FORCE)
+        except Exception as e:
+            logger.warning(f"[Live2DWidget]表情动作播放失败 {group}：{e}")
+            self._emotion_motion_playing = False
+            self._restore_auto_anim()
+
+    def _start_return_to_neutral(self, duration: float) -> None:
+        """启动平滑过渡：所有参数从当前值回到 default（常态）
+
+        动作最后一帧的参数值作为起点，全部参数的 default 作为终点，
+        期间用 smoothstep 缓动逐帧插值，过渡完成后恢复自动眨眼/呼吸。
+        """
+        if self.model is None:
+            return
+        ids = self.model.GetParamIds()
+        frm, to = {}, {}
+        for i, pid in enumerate(ids):
+            try:
+                p = self.model.GetParameter(i)
+                frm[pid] = p.value      # 动作结束时的当前值
+                to[pid] = p.default     # 常态默认值
+            except Exception:
+                continue
+        self._return_transition = {
+            "from": frm, "to": to, "t": 0.0, "duration": max(0.1, duration),
+        }
+
+    def _update_return_transition(self, dt: float) -> None:
+        """推进回常态过渡：在 paintGL 的 Update 之后、Draw 之前写入插值参数"""
+        tr = self._return_transition
+        if tr is None or self.model is None:
+            return
+        tr["t"] += dt
+        p = min(1.0, tr["t"] / tr["duration"])
+        e = p * p * (3.0 - 2.0 * p)   # smoothstep 缓动，起止平滑
+        for pid, frm in tr["from"].items():
+            to = tr["to"].get(pid, frm)
+            val = frm + (to - frm) * e
+            try:
+                self.model.SetParameterValue(pid, val, 1.0)
+            except Exception:
+                pass
+        if p >= 1.0:
+            self._return_transition = None
+            self._restore_auto_anim()   # 过渡完成，恢复自动眨眼/呼吸（常态待机）
+
+    def _restore_auto_anim(self) -> None:
+        """恢复自动眨眼/呼吸（常态待机需要）"""
+        if self.model is None:
+            return
+        try:
+            self.model.SetAutoBlinkEnable(True)
+            self.model.SetAutoBreathEnable(True)
+        except Exception:
+            pass
 
     def is_in_l2d_area(self, click_x, click_y) -> bool:
         """判断点击位置是否落在 Live2D 模型的非透明像素上"""
@@ -508,8 +606,8 @@ class ImageWindow(QWidget):
             return
         # 切换为思考中状态，禁止输入（思考期间一直显示“哈达莉思考中......”）
         self.chat_box.to_thinking_state()
-        # 创建并启动 AI 工作线程，传入 live2d 模型对象供情感驱动表情
-        self.ai_worker = AIWorker(user_input, live2d_model=self.live2d_widget.model)
+        # 创建并启动 AI 工作线程，传入 Live2DWidget 实例供情感驱动表情（跨线程经信号转发）
+        self.ai_worker = AIWorker(user_input, live2d_model=self.live2d_widget)
         self.ai_worker.response_ready.connect(self.on_ai_response)
         self.ai_worker.start()
 

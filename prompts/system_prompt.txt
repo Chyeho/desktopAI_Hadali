@@ -20,7 +20,7 @@
 你的最终回复必须是一个严格的 JSON 对象，包含两个字段：
 - emotion：情感标签，表示你此刻应呈现的情绪，只能取以下值之一：
   happy（开心）、sad（难过）、angry（生气）、surprised（惊讶）、neutral（平静）、
-  shy（害羞）、worried（担心）、excited（兴奋）、thinking（思考）。
+  shy（害羞）、worried（担心）、excited（兴奋）、thinking（思考）、relaxed（放松）。
 - reply：你对用户说的话（字符串）。
 
 输出示例：
