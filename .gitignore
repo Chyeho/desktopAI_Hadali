@@ -28,6 +28,9 @@ screenshot.png
 *.log
 logs/
 
+# 评测输出（每次运行覆盖，不入库）
+bench/result.csv
+
 # 运行时数据（对话历史，含用户聊天记录，禁止提交）
 chat_history/
 

@@ -34,12 +34,20 @@ PROBE_TIMEOUT = 0.5      # 单次探活超时
 READY_TIMEOUT = 20.0
 
 
-def probe(base_url: str, token: str, timeout: float = PROBE_TIMEOUT) -> bool:
-    """GET /v1/health 探活"""
+def probe(base_url: str, token: str, timeout: float = PROBE_TIMEOUT,
+          client: httpx.Client | None = None) -> bool:
+    """GET /v1/health 探活
+
+    可传入共享 Client：`httpx.Client()` 在 Windows 上初始化约 1.4s，
+    轮询探活时每次新建会严重拖慢就绪判定。
+    """
     headers = {TOKEN_HEADER: token} if token else {}
     try:
-        with httpx.Client(timeout=timeout) as client:
-            return client.get(f"{base_url}/v1/health", headers=headers).status_code == 200
+        if client is not None:
+            return client.get(f"{base_url}/v1/health", headers=headers,
+                              timeout=timeout).status_code == 200
+        with httpx.Client(timeout=timeout) as own_client:
+            return own_client.get(f"{base_url}/v1/health", headers=headers).status_code == 200
     except Exception:
         return False
 
@@ -58,6 +66,12 @@ class _LaunchWorker(QThread):
         self.proc: subprocess.Popen | None = None
         self._stop = threading.Event()
         self._log_file = None
+        self._probe_client: httpx.Client | None = None
+
+    def _probe(self, base_url: str, token: str, timeout: float = PROBE_TIMEOUT) -> bool:
+        if self._probe_client is None:
+            self._probe_client = httpx.Client(timeout=timeout)
+        return probe(base_url, token, timeout=timeout, client=self._probe_client)
 
     def stop(self) -> None:
         """终止自己拉起的子进程（复用的外部后端不受影响）"""
@@ -70,13 +84,19 @@ class _LaunchWorker(QThread):
             except Exception:
                 proc.kill()
         self._close_log()
+        if self._probe_client is not None:
+            try:
+                self._probe_client.close()
+            except Exception:
+                pass
+            self._probe_client = None
 
     def run(self) -> None:  # noqa: D401 - QThread 入口
         # 1) 复用已就绪的后端（带 token / 不带 token 各试一次）
-        if probe(self.base_url, self.token):
+        if self._probe(self.base_url, self.token):
             self.ready.emit(self.base_url, self.token)
             return
-        if self.token and probe(self.base_url, ""):
+        if self.token and self._probe(self.base_url, ""):
             self.ready.emit(self.base_url, "")
             return
         if not self.spawn:
@@ -129,7 +149,7 @@ class _LaunchWorker(QThread):
         while time.time() < deadline and not self._stop.is_set():
             if self.proc.poll() is not None:
                 break   # 进程提前退出（端口被占用等）
-            if probe(candidate, self.token, timeout=0.3):
+            if self._probe(candidate, self.token, timeout=0.3):
                 logger.info(f"[launcher]后端已就绪：{candidate}")
                 return candidate
             time.sleep(0.2)

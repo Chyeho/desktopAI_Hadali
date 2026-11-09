@@ -11,6 +11,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import httpx
 import pytest
 from PySide6.QtCore import QCoreApplication
 
@@ -171,10 +172,11 @@ class TestSseWorker:
     def test_connection_refused_emits_failed(self):
         failures = []
         worker = SseWorker(f"{_closed_port_url()}/v1/chat",
-                           {"session_id": "default", "text": "hi"})
+                           {"session_id": "default", "text": "hi"}, retry_delay=0)
         worker.failed.connect(failures.append)
         worker.start()
-        assert worker.wait(5000)
+        # Windows 上连接被拒绝的单次尝试可能耗时数秒，且会重试一次
+        assert worker.wait(15000)
         assert _wait_until(lambda: len(failures) == 1)
         assert failures[0]
 
@@ -215,3 +217,53 @@ class TestSseTransport:
         assert _wait_until(lambda: bool(failures))
         transport.close()
         assert "HTTP 500" in failures[0]
+
+
+class TestRetry:
+    """连接阶段失败（未收到事件）重试一次；HTTP 状态错误不重试"""
+
+    def _worker(self, handler, events, failures):
+        worker = SseWorker(
+            "http://bench/v1/chat",
+            {"session_id": "default", "text": "hi"},
+            client_factory=lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+            retry_delay=0,
+        )
+        worker.event.connect(lambda name, data: events.append(name))
+        worker.failed.connect(failures.append)
+        return worker
+
+    def test_retry_once_after_connect_error(self):
+        calls = {"n": 0}
+
+        def handler(request):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise httpx.ConnectError("refused", request=request)
+            body = _frame("turn.start", mode="emotion").encode()
+            return httpx.Response(
+                200, headers={"Content-Type": "text/event-stream"}, content=body
+            )
+
+        events, failures = [], []
+        worker = self._worker(handler, events, failures)
+        worker.start()
+        assert worker.wait(5000)
+        assert _wait_until(lambda: events == ["turn.start"])
+        assert calls["n"] == 2
+        assert failures == []
+
+    def test_http_error_not_retried(self):
+        calls = {"n": 0}
+
+        def handler(request):
+            calls["n"] += 1
+            return httpx.Response(500)
+
+        events, failures = [], []
+        worker = self._worker(handler, events, failures)
+        worker.start()
+        assert worker.wait(5000)
+        assert _wait_until(lambda: len(failures) == 1)
+        assert calls["n"] == 1
+        assert events == []

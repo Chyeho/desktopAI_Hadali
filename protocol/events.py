@@ -86,6 +86,7 @@ class TurnEndEvent(BaseEvent):
     reply: str
     emotion: str
     latency_ms: float
+    first_event_ms: float = 0.0
 
 
 class ErrorEvent(BaseEvent):

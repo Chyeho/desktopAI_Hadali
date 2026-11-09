@@ -18,6 +18,12 @@
 
 ## 运行方式
 
+项目为**前后端分离**架构：
+
+- `client/`（PySide6 + Live2D + TTS）：只负责界面、表情动画与语音播报
+- `server/`（FastAPI + uvicorn）：持有 Agent、会话历史、工具调用与大模型配置
+- 两者通过本机 HTTP + SSE 通信（默认 `http://127.0.0.1:8765`），Agent 语义与改造前完全一致
+
 1. 安装依赖（使用国内镜像加速）：
 
    ```
@@ -32,31 +38,53 @@
    MODEL=deepseek-chat
    ```
 
-3. 启动程序：
+3. 启动程序（推荐：客户端会自动探活，必要时拉起后端）：
 
    ```
    uv run python main.py
    ```
 
+   也可以分开启动，便于查看后端日志 / 多客户端接入：
+
+   ```
+   uv run python -m server --port 8765
+   uv run python main.py --server-url http://127.0.0.1:8765 --no-spawn
+   ```
+
+> 后端按 `session_id` 隔离对话历史（桌面端默认 `default`）。
+> 需要给本机接口加校验时设置环境变量 `HADALI_TOKEN`；未配置时接口仅建议本机调试使用。
+> `python main.py` 仍是原来的启动入口（现在是 `client/main.py` 的 shim）。
+
 ## 项目结构
 
-- `main.py`              程序主入口
-- `chatbot.py`           AI 对话门面（初始化 + 对外接口，核心逻辑在 `agent/`）
-- `agent/`               AI 对话核心：chat_agent（工具调用循环）/ tool_manager（工具管理）/ expression_driver（表情驱动）/ mode_configs（模式配置）
+- `main.py`              程序入口（`client.main` 的 shim，保持 `python main.py` 可用）
+- `client/`              客户端（UI 进程）
+  - `client/main.py`     客户端入口：OpenGL 初始化 → 拉起/复用后端 → 显示窗口
+  - `client/ui/`         ChatBox（三态聊天框）/ Live2DWidget（渲染与表情）/ ImageWindow（主窗口）
+  - `client/transport/`  Transport 接口 + SseWorker(QThread) + SSE 事件解析
+  - `client/voice/tts.py` 语音合成（qwen3-tts / edge-tts）
+  - `client/emotion_map.py` 情感 → 动作组映射与播放
+  - `client/server_launcher.py` 后端探活、自动拉起与退出清理
+- `server/`              后端（无 GUI）：FastAPI 路由 / 服务容器 / token 校验
+- `protocol/`            请求与 SSE 事件模型（client 与 server 共用）
+- `core/`                纯逻辑门面与会话管理（`facade` / `session` / `tracing`）
+- `chatbot.py`           AI 对话兼容适配器（保留模块级 `_agent` 供既有测试使用）
+- `agent/`               AI 对话核心：chat_agent（工具调用循环）/ tool_manager / mode_configs
 - `modelFactory/`        模型工厂（langchain ChatOpenAI，工厂模式）
 - `tools/common/`        公共工具（本机时间 / 天气 / 联网搜索）
 - `utils/`               工具集（配置 / 日志 / 路径 / 提示词加载）
 - `prompts/`             系统提示词文本（不硬编码在代码中）
 - `config/`              配置文件（提示词路径等 yaml）
-- `chatbotUI.py`         Live2D 桌宠界面（含表情动画驱动 + 回常态平滑过渡）
-- `chatbotTTS.py`        语音合成模块（TTS，qwen3-tts / edge-tts）
+- `bench/`               批量评测脚本与固定 prompt（见“性能评测”）
 - `expression_tester.py` Live2D 表情动画调试台（独立运行，见下文）
 - `resources.py`         资源目录常量
 - `Resources/`           Live2D 模型资源（HiYori 模型 + 动作）
 
 ## AI 对话逻辑与 agent 模式
 
-**对话流程**：用户输入 → AIWorker 后台线程处理（模型思考 → 按需调用工具 → 解析回复）→ 聊天框打字机逐字显示。
+**对话流程**：用户输入 → client 发送 `POST /v1/chat`（SSE）→ server 在工作线程中执行模型思考 → 按需调用工具 → 解析回复 → 事件流回传（`turn.start` / `state` / `text.delta` / `emotion` / `tool.*` / `turn.end`）→ 聊天框打字机显示、表情播放、语音播报。
+
+- **前后端边界**：UI 只依赖 `client/transport` 的 `send / interrupt / close` 与两个信号；`emotion` 事件经 `client/emotion_map.py` 转成动作组，再由唯一跨线程入口 `Live2DWidget.request_play_motion` 投递到主线程执行
 
 - **模型工厂**：连接参数（`API_KEY` / `BASE_URL` / `MODEL`）从 `.env` 读取，生产 langchain `ChatOpenAI`，支持 DeepSeek、通义兼容端、本地 vLLM 等任意 OpenAI 协议模型
 - **工具调用**：手写轻量循环（`bind_tools`，单次对话最多 6 轮），模型遇到实时信息（时间 / 天气 / 新闻等）时自动调用工具后作答，不使用 ReAct 等重型框架
@@ -67,7 +95,7 @@
 
 ## TTS 语音合成方案
 
-桌宠播报语音由 `chatbotTTS.py` 负责，通过 `.env` 的 `TTS_MODE` 切换运行模式：
+桌宠播报语音由 `client/voice/tts.py` 负责，通过 `.env` 的 `TTS_MODE` 切换运行模式：
 
 - **demo（演示模式，默认）**：优先 qwen3-tts（阿里云百炼，多语言混说 + 自定义音色），失败时 edge-tts 兜底
 - **dev（开发模式）**：仅使用 edge-tts（免费、零配置，不依赖 API Key）
@@ -123,7 +151,7 @@ DASHSCOPE_VOICE=音色ID
 
 ## Live2D 表情动画系统
 
-情感标签 → 动作组的映射定义在 `agent/expression_driver.py` 的 `EMOTION_MOTION_MAP`，当前接入了 HiYori 模型自带的 6 组动作：
+情感标签 → 动作组的映射定义在 `client/emotion_map.py` 的 `EMOTION_MOTION_MAP`，当前接入了 HiYori 模型自带的 6 组动作：
 
 | 情感标签 | 动作组 | 含义 |
 | --- | --- | --- |
@@ -137,11 +165,11 @@ DASHSCOPE_VOICE=音色ID
 
 ### 平滑回常态机制
 
-`chatbotUI.py` 的 `Live2DWidget` 在每次表情动作播放结束后，会用 **smoothstep 缓动**在 1.5 秒内把全部参数从动作末值平滑插值回 `default`（常态），过渡完成再恢复自动眨眼 / 呼吸。避免动作一结束就跳变回中性参数导致不自然。
+`client/ui/live2d_widget.py` 的 `Live2DWidget` 在每次表情动作播放结束后，会用 **smoothstep 缓动**在 1.5 秒内把全部参数从动作末值平滑插值回 `default`（常态），过渡完成再恢复自动眨眼 / 呼吸。避免动作一结束就跳变回中性参数导致不自然。
 
 ### 跨线程安全
 
-`drive_expression` 在 `AIWorker` 子线程被调用，通过 `Live2DWidget.request_play_motion` 信号（`QueuedConnection`）把动作播放请求转发到主线程执行，避免子线程直接操作 OpenGL 导致崩溃。
+`emotion` 事件在传输线程（`SseWorker`）被解析，`drive_expression` 通过 `Live2DWidget.request_play_motion` 信号把动作播放请求转发到主线程执行，避免子线程直接操作 OpenGL 导致崩溃；打断时调用 `reset_emotion()` 立即停止动作并恢复常态。
 
 ## Live2D 表情动画调试台
 
@@ -161,6 +189,24 @@ uv run python expression_tester.py
 - **Dump 全部参数**：一键打印所有参数的 id / min / max / default / 当前值，方便了解模型能力边界
 
 > 调试台产出的预设 / 动画是后续扩展自定义神态（不依赖模型自带动作）的原料，可由主程序按需加载。
+
+## 性能评测
+
+`bench/` 提供固定 20 条 prompt（闲聊 / 时间 / 天气 / 搜索 / 情绪）的端到端评测：逐条请求 `POST /v1/chat`，统计首事件延迟、整轮总延迟、工具调用与错误。
+
+```
+uv run python bench/run_bench.py --limit 3   # 先验证连通性（会真实调用大模型）
+uv run python bench/run_bench.py             # 全量 20 条，自动拉起/回收后端
+```
+
+输出 `bench/result.csv`（每条一行）与控制台 P50/P95。当前本机基线（DeepSeek，20 条，独立 `bench` 会话）：
+
+| 指标 | P50 | P95 |
+| --- | --- | --- |
+| 首事件延迟（请求发出 → 第一个 SSE 帧） | 3.3 ms | 5.0 ms |
+| 整轮总延迟（请求发出 → `turn.end`） | 1.74 s | 5.29 s |
+
+工具调用率 45%（9/20 触发工具），错误率 0%。首轮约 5.3s 属于 Agent 冷启动，非链路开销。
 
 ## 项目期望与规划
 

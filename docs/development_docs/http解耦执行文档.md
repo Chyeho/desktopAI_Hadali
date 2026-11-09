@@ -727,6 +727,15 @@ async def event_stream(req: ChatRequest):
 
 **验收**：`python bench/run_bench.py` 生成 CSV；`pytest -q` 全绿；README 步骤可复现。
 
+> 状态：已完成（2026-11-09）。实现偏差与实测数据见 [http解耦开发记录.md](./http解耦开发记录.md)：
+> - 重连语义收敛为“仅 `ConnectError/ConnectTimeout` 且未收到任何事件时重试一次”，HTTP 5xx 不重试；
+> - `first_event_ms` 随 `turn.end` 下发（服务端视角），客户端首帧延迟由 bench 独立统计；
+> - 发现并修复 `httpx.Client()` 初始化约 1.4s 导致的首帧延迟虚高（共享 Client 后 P50 697.9ms → 3.3ms）。
+>
+> - [x] `python bench/run_bench.py` 生成 `bench/result.csv`（20/20 成功，错误率 0%）
+> - [x] `pytest -q` 全绿（260 passed）
+> - [x] README 增加前后端分离启动 / 独立后端 / 评测章节
+
 ---
 
 ## 9. 风险清单

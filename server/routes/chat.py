@@ -37,10 +37,13 @@ def _format_sse(event_name: str, event: BaseEvent) -> str:
 
 def _map_error(exc: Exception) -> str:
     '''异常 → 协议错误码'''
-    if isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.lower():
+    name = type(exc).__name__.lower()
+    if isinstance(exc, TimeoutError) or "timeout" in name:
         return ErrorCode.LLM_TIMEOUT.value
     if isinstance(exc, ValueError):
         return ErrorCode.BAD_REQUEST.value
+    if "connection" in name or "connect" in name:
+        return ErrorCode.LLM_ERROR.value
     return ErrorCode.INTERNAL.value
 
 
@@ -50,10 +53,14 @@ async def chat(req: ChatRequest, services: Services = Depends(get_services)):
     turn_id = uuid.uuid4().hex
     mode = req.mode or services.current_mode
     seq = 0
+    started = time.perf_counter()
+    first_event_ms = None   # 请求进入 → 首个事件写出（由事件循环调度决定）
 
     def emit(event_name: EventName, model: type[BaseEvent], **fields) -> str:
-        nonlocal seq
+        nonlocal seq, first_event_ms
         seq += 1
+        if first_event_ms is None:
+            first_event_ms = round((time.perf_counter() - started) * 1000, 3)
         event = model(seq=seq, turn_id=turn_id, ts=int(time.time() * 1000), **fields)
         return _format_sse(event_name.value, event)
 
@@ -98,6 +105,7 @@ async def chat(req: ChatRequest, services: Services = Depends(get_services)):
                 reply=result["reply"],
                 emotion=result["emotion"],
                 latency_ms=result.get("latency_ms", 0.0),
+                first_event_ms=first_event_ms or 0.0,
             )
             tracer.finish_success(result)
         except Exception as exc:

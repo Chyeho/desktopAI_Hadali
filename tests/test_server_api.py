@@ -193,6 +193,29 @@ class TestChatStream:
         error = dict(_parse_sse(resp.text))["error"]
         assert error["code"] == "LLM_TIMEOUT"
 
+    def test_turn_end_reports_first_event_ms(self):
+        resp = _request(FakeServices(), "POST", "/v1/chat", json={"text": "hi"})
+        turn_end = dict(_parse_sse(resp.text))["turn.end"]
+        assert turn_end["first_event_ms"] >= 0.0
+
+    def test_connection_error_maps_to_llm_error(self):
+        resp = _request(
+            FakeServices(exc=httpx.ConnectError("refused")), "POST", "/v1/chat",
+            json={"text": "hi"},
+        )
+        error = dict(_parse_sse(resp.text))["error"]
+        assert error["code"] == "LLM_ERROR"
+        assert error["retryable"] is True
+
+    def test_value_error_maps_to_bad_request(self):
+        resp = _request(
+            FakeServices(exc=ValueError("未知的 agent 模式")), "POST", "/v1/chat",
+            json={"text": "hi"},
+        )
+        error = dict(_parse_sse(resp.text))["error"]
+        assert error["code"] == "BAD_REQUEST"
+        assert error["retryable"] is False
+
     def test_invalid_session_id_returns_400(self):
         resp = _request(FakeServices(), "POST", "/v1/chat", json={"session_id": "../evil", "text": "hi"})
         assert resp.status_code == 400

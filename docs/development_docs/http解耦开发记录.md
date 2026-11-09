@@ -136,4 +136,36 @@
 
 ## P4：打磨与评测
 
-（待开始）
+### 状态
+
+- [x] `bench/prompts.jsonl`（20 条）、`bench/run_bench.py`、`bench/result.csv`（运行时生成，已加入 `.gitignore`）
+- [x] `client/transport/client.py`：连接失败重试一次 + 显式超时（connect 3s / read 60s）
+- [x] `server/routes/chat.py`：错误码细化（连接类异常 → `LLM_ERROR`）、`turn.end` 增加 `first_event_ms`
+- [x] 测试补齐：transport 重试 / 5xx 不重试；server 错误码映射与 `first_event_ms`
+- [x] README 增加前后端分离启动、独立后端、性能评测章节
+- [x] `pytest -q` 全绿（`260 passed in 29.82s`）
+- [x] commit
+
+### 问题记录
+
+| 编号 | 问题描述 | 解决方案 | 结果 |
+|---|---|---|---|
+| P4-1 | 首版 bench 的“首事件延迟”P50 高达 697.9ms，但 SSE 首个 `turn.start` 本应立即下发 | 逐项排除后实测 `httpx.Client()` 在本机初始化需 **1410ms**（证书上下文加载）；`SseWorker` 每轮新建 Client、bench 每条新建 Client、launcher 每次探活也新建 Client，全都被算进了首帧延迟 | 传输层改为整条链路共享一个 Client（`_get_client()`）；打断时只 `response.close()` 不关 Client，避免下一轮重建；bench 与 launcher 复用探活 Client。首事件 P50 **697.9ms → 3.3ms** |
+| P4-2 | 修完 P4-1 后，首条 prompt 整轮仍要 5.3s，与后续 1.0–1.6s 差距明显 | 定位为首个 session 首次创建 Agent 的冷启动（P2 已记录约 3s，叠加模型首 token），非链路开销 | bench 汇总与 README 均标注“首轮冷启动，非链路开销”，避免误读为性能回归 |
+| P4-3 | “重连一次”若实现不当会重放已发送的 turn，导致同一句话调用两次大模型 | 仅当异常是 `httpx.ConnectError` / `httpx.ConnectTimeout` **且一个事件都没收到**时重试一次（连接从未建立，不可能重复生成）；一旦收到任意帧（含 `turn.start`）失败就上报；HTTP 5xx 不重试 | 新增 2 个用例：`ConnectError` 后重试成功（调用 2 次）、500 只调用 1 次并发出 `failed` |
+| P4-4 | 执行文档要求 `first_event_ms` 统计，但没说放在哪个事件、按谁的时钟 | 定义：**请求进入路由 → 首个事件被拼装写出**（服务端 `perf_counter`），放在 `turn.end`；客户端首帧延迟则由 bench 独立计时（端到端） | `protocol/events.py` 的 `TurnEndEvent.first_event_ms` 默认 0.0，向后兼容；新增断言 `>= 0.0` |
+| P4-5 | 想把 `retryable` 收紧为“仅 LLM_TIMEOUT/LLM_ERROR/TOOL_ERROR 可重试”，但既有测试断言 `INTERNAL → retryable=True` | 保持 `retryable = code != BAD_REQUEST` 不变，P4 只细化错误码映射（新增连接类异常 → `LLM_ERROR`），不动既有断言 | 既有 server 测试零改动通过 |
+| P4-6 | bench 直连真实大模型，若无会话隔离会污染 `chat_history/default.json` | 默认 `--session-id bench`，历史写入 `chat_history/bench.json`；`--limit` 便于先验证连通性；CSV 用 `utf-8-sig` 便于 Excel 打开 | 20 条跑完，`default.json` 未被写入 |
+| P4-7 | 服务端探活若每次新建 Client，launcher 的 20s 就绪窗口会被探活自身的 1.4s/次吃掉 | `_LaunchWorker` 懒加载一个探活专用 Client，退出时关闭；`probe()` 支持传入 Client | 探活轮询间隔恢复为 0.2s 级别，就绪判定不再被探活拖慢 |
+
+### 评测结果（DeepSeek，20 条，独立 `bench` 会话）
+
+| 指标 | P50 | P95 |
+|---|---|---|
+| 首事件延迟 | 3.3 ms | 5.0 ms |
+| 整轮总延迟 | 1743.1 ms | 5288.2 ms |
+
+- 工具调用率：45%（9/20，时间 1 条、天气 4 条、搜索 4 条）
+- 错误率：0%
+- 结果文件：`bench/result.csv`（不入库）
+

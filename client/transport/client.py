@@ -23,8 +23,8 @@ from utils.logger_handler import logger
 DEFAULT_BASE_URL = "http://127.0.0.1:8765"
 TOKEN_HEADER = "X-Hadali-Token"
 
-# 事件流是长连接：不设读超时，只限制建连与写超时
-DEFAULT_TIMEOUT = httpx.Timeout(connect=3.0, read=None, write=10.0, pool=10.0)
+# 事件流是长连接：建连/写超时较短，读超时 60s（两帧之间超时视为断连，由 UI 提示重发）
+DEFAULT_TIMEOUT = httpx.Timeout(connect=3.0, read=60.0, write=10.0, pool=10.0)
 
 
 def decode_event(event_name: str, data: str) -> tuple[str, dict] | None:
@@ -83,23 +83,37 @@ class SseWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, url: str, payload: dict, headers: dict | None = None,
-                 client_factory=None, parent=None):
+                 client_factory=None, close_client: bool = True,
+                 retry_delay: float = 1.0, parent=None):
         super().__init__(parent)
         self.url = url
         self.payload = payload
         self.headers = headers or {}
+        self.retry_delay = retry_delay
         self._client_factory = client_factory
+        self._close_client = close_client
         self._cancelled = threading.Event()
         self._client: httpx.Client | None = None
+        self._response = None
         self._client_lock = threading.Lock()
 
     # ---------- 生命周期 ----------
     def cancel(self) -> None:
-        """打断：标记取消并关闭连接，使阻塞中的读流尽快返回"""
+        """打断：标记取消并关闭当前响应流，使阻塞中的读流尽快返回
+
+        只关响应、不关共享 Client：避免一次打断让后续轮次重建 Client
+        （Windows 上 `httpx.Client()` 初始化约 1.4s，代价很高）。
+        """
         self._cancelled.set()
         with self._client_lock:
+            response = self._response
             client = self._client
-        if client is not None:
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
+        if self._close_client and client is not None:
             try:
                 client.close()
             except Exception:
@@ -115,34 +129,58 @@ class SseWorker(QThread):
         return httpx.Client(timeout=DEFAULT_TIMEOUT)
 
     def run(self) -> None:  # noqa: D401 - QThread 入口
-        client = self._make_client()
-        with self._client_lock:
-            self._client = client
-        try:
-            with connect_sse(client, "POST", self.url,
-                             json=self.payload, headers=self.headers) as source:
-                source.response.raise_for_status()
-                for message in source.iter_sse():
-                    if self.cancelled:
+        """消费事件流；仅当“连接阶段失败且一个事件都没收到”时重试一次
+
+        重试不会重放已发送的 turn：只要收到过任意一拍（含 turn.start），
+        说明请求已到达 server，此时失败一律上报，避免重复调用大模型。
+        """
+        attempt = 0
+        while True:
+            attempt += 1
+            received = False
+            client = self._make_client()
+            with self._client_lock:
+                self._client = client
+            try:
+                with connect_sse(client, "POST", self.url,
+                                 json=self.payload, headers=self.headers) as source:
+                    with self._client_lock:
+                        self._response = source.response
+                    source.response.raise_for_status()
+                    for message in source.iter_sse():
+                        if self.cancelled:
+                            return
+                        received = True
+                        decoded = decode_event(message.event, message.data)
+                        if decoded is not None:
+                            self.event.emit(*decoded)
+                return
+            except httpx.HTTPStatusError as exc:
+                if not self.cancelled:
+                    logger.warning(f"[transport]后端返回 HTTP {exc.response.status_code}")
+                    self.failed.emit(_status_message(exc.response))
+                return
+            except Exception as exc:
+                if self.cancelled:
+                    return
+                connect_failed = isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout))
+                if attempt == 1 and not received and connect_failed:
+                    logger.warning(f"[transport]连接失败，{self.retry_delay}s 后重试一次：{exc}")
+                    if self.retry_delay > 0 and self._cancelled.wait(self.retry_delay):
                         return
-                    decoded = decode_event(message.event, message.data)
-                    if decoded is not None:
-                        self.event.emit(*decoded)
-        except httpx.HTTPStatusError as exc:
-            if not self.cancelled:
-                logger.warning(f"[transport]后端返回 HTTP {exc.response.status_code}")
-                self.failed.emit(_status_message(exc.response))
-        except Exception as exc:
-            if not self.cancelled:
+                    continue
                 logger.warning(f"[transport]连接异常：{exc}")
                 self.failed.emit(f"与后端的连接中断：{exc}")
-        finally:
-            with self._client_lock:
-                self._client = None
-            try:
-                client.close()
-            except Exception:
-                pass
+                return
+            finally:
+                with self._client_lock:
+                    self._response = None
+                    self._client = None
+                if self._close_client:
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
 
 
 class SseTransport(Transport):
@@ -155,14 +193,18 @@ class SseTransport(Transport):
     """
 
     def __init__(self, base_url: str | None = None, token: str | None = None,
-                 session_id: str = "default", client_factory=None, parent=None):
+                 session_id: str = "default", client_factory=None,
+                 retry_delay: float = 1.0, parent=None):
         super().__init__(parent)
         self.base_url = (base_url or os.environ.get("HADALI_SERVER_URL")
                          or DEFAULT_BASE_URL).rstrip("/")
         self.token = token if token is not None else os.environ.get("HADALI_TOKEN", "")
         self.session_id = session_id
+        self.retry_delay = retry_delay
         self._client_factory = client_factory
         self._worker: SseWorker | None = None
+        self._shared_http: httpx.Client | None = None
+        self._shared_lock = threading.Lock()
         self._lock = threading.Lock()
 
     # ---------- 配置 ----------
@@ -178,6 +220,19 @@ class SseTransport(Transport):
         if self.token:
             headers[TOKEN_HEADER] = self.token
         return headers
+
+    def _get_client(self) -> httpx.Client:
+        """复用同一个 httpx.Client
+
+        `httpx.Client()` 在 Windows 上初始化约 1.4s（加载证书上下文），
+        每轮新建会让“首事件延迟”凭空多出一秒多，因此整条传输链路共用一个实例。
+        """
+        with self._shared_lock:
+            if self._shared_http is None:
+                self._shared_http = (self._client_factory()
+                                     if self._client_factory is not None
+                                     else httpx.Client(timeout=DEFAULT_TIMEOUT))
+            return self._shared_http
 
     # ---------- Transport 接口 ----------
     def is_busy(self) -> bool:
@@ -197,7 +252,9 @@ class SseTransport(Transport):
             f"{self.base_url}/v1/chat",
             payload,
             headers=self._headers(),
-            client_factory=self._client_factory,
+            client_factory=self._get_client,
+            close_client=False,
+            retry_delay=self.retry_delay,
             parent=self,
         )
         worker.event.connect(self.event_received)
@@ -217,7 +274,7 @@ class SseTransport(Transport):
             worker.cancel()
 
     def close(self) -> None:
-        """退出时释放：关闭事件流并等待线程收尾"""
+        """退出时释放：关闭事件流、等待线程收尾、关闭共享 Client"""
         self.interrupt()
         with self._lock:
             worker = self._worker
@@ -225,12 +282,19 @@ class SseTransport(Transport):
         if worker is not None:
             worker.cancel()
             worker.wait(1500)
+        with self._shared_lock:
+            client, self._shared_http = self._shared_http, None
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
     # ---------- 内部 ----------
     def _post_interrupt(self, session_id: str) -> None:
         try:
-            with httpx.Client(timeout=2.0) as client:
-                client.post(f"{self.base_url}/v1/interrupt",
-                            json={"session_id": session_id}, headers=self._headers())
+            client = self._get_client()
+            client.post(f"{self.base_url}/v1/interrupt",
+                        json={"session_id": session_id}, headers=self._headers())
         except Exception as exc:
             logger.debug(f"[transport]interrupt 请求失败（可忽略）：{exc}")

@@ -1,0 +1,20 @@
+{"id": "chat-01", "category": "闲聊", "text": "今天过得怎么样呀？"}
+{"id": "chat-02", "category": "闲聊", "text": "给我讲个冷笑话吧"}
+{"id": "chat-03", "category": "闲聊", "text": "你觉得自己是个什么样的助手？"}
+{"id": "chat-04", "category": "闲聊", "text": "推荐一部适合周末看的电影"}
+{"id": "chat-05", "category": "闲聊", "text": "我最近有点累，陪我说说话"}
+{"id": "time-01", "category": "时间", "text": "现在几点了？"}
+{"id": "time-02", "category": "时间", "text": "今天是几月几号，星期几？"}
+{"id": "time-03", "category": "时间", "text": "距离今年结束还有多少天？"}
+{"id": "time-04", "category": "时间", "text": "用本机时间告诉我现在是上午还是下午"}
+{"id": "weather-01", "category": "天气", "text": "北京今天天气怎么样？"}
+{"id": "weather-02", "category": "天气", "text": "上海明天会下雨吗？"}
+{"id": "weather-03", "category": "天气", "text": "杭州现在多少度，适合穿外套吗？"}
+{"id": "weather-04", "category": "天气", "text": "查一下深圳未来三天的天气"}
+{"id": "search-01", "category": "搜索", "text": "帮我查一下最近有什么科技新闻"}
+{"id": "search-02", "category": "搜索", "text": "2026 年有哪些值得关注的新技术？"}
+{"id": "search-03", "category": "搜索", "text": "查一下最近上映的电影有哪些"}
+{"id": "search-04", "category": "搜索", "text": "搜一下今年诺贝尔物理学奖的获奖者"}
+{"id": "emotion-01", "category": "情绪", "text": "我今天升职了，好开心！"}
+{"id": "emotion-02", "category": "情绪", "text": "考试没考好，有点难过"}
+{"id": "emotion-03", "category": "情绪", "text": "明天要面试，紧张得睡不着"}
