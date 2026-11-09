@@ -594,9 +594,12 @@ class Transport(QObject):
 
 **回滚**：`git revert <P1 commit>`；`chatbot.py` shim 保证旧入口可回退。
 
-**风险**：`chatbot.py` 的 `sys.modules` 替换写法需要验证 pytest 收集阶段行为；若不可行，改用"显式代理函数 + 模块级 `__getattr__`"。
+**风险**：~~`chatbot.py` 的 `sys.modules` 替换写法需要验证 pytest 收集阶段行为~~ 已处理：未采用 `sys.modules` 替换，改用过渡适配器（见开发记录 P1-2 / P1-4）。
 
 ### P2：server（FastAPI + SSE + DI + token）
+
+> 状态：已完成（2026-11-09），问题记录见 [http解耦开发记录.md](./http解耦开发记录.md)。
+> 实现补充：参数校验错误统一由 `RequestValidationError` 处理器映射为 400（FastAPI 默认 422）；`/v1/interrupt` 仅返回确认（同步 agent 无法安全强杀工作线程）。
 
 **前置**：`uv add fastapi uvicorn httpx httpx-sse`，并在 `pyproject.toml` 显式列出现有依赖 `httpx`、`httpx-sse`。
 

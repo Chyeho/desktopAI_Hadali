@@ -51,7 +51,32 @@
 
 ## P2：server
 
-（待开始）
+### 状态
+
+- [x] 代码完成（`protocol/`、`core/session.py`、`core/tracing.py`、`server/*`）
+- [x] `pytest -q` 全绿（`244 passed in 15.16s`，新增 58 个用例）
+- [x] 验收项逐条通过
+- [x] commit
+
+### 问题记录
+
+| 编号 | 问题描述 | 解决方案 | 结果 |
+|---|---|---|---|
+| P2-1 | SSE 生成器的内部函数写成 `emit(name, model, **fields)`，调用 `emit(..., name=result["emotion"])` 时 `name` 与形参冲突，抛 `TypeError: emit() got multiple values for argument 'name'`，导致 `emotion` 事件被 `error` 事件替代 | 形参改名为 `event_name`，事件字段 `name` 继续通过 `**fields` 传入 | 修复后事件顺序与协议一致，`tests/test_server_api.py` 全绿 |
+| P2-2 | FastAPI 的 `RequestValidationError` 默认返回 422，协议 v1 约定参数非法返回 400 | 在 `create_app()` 注册 `RequestValidationError` 异常处理器，统一返回 `400 {"code":"BAD_REQUEST"}` | 非法 `session_id`、空 `text` 均返回 400 |
+| P2-3 | `uv add fastapi uvicorn httpx httpx-sse` 会重算依赖并改写 `uv.lock`（新增 71 行），且版本取自镜像最新 | 确认 `pyproject.toml` 显式出现四个依赖：`fastapi>=0.162.2`、`uvicorn>=0.54.0`、`httpx>=0.28.1`、`httpx-sse>=0.4.3`；锁定文件一并提交 | 环境可复现；`pytest` 全绿 |
+| P2-4 | `asyncio.Lock` 在 `SessionManager` 中惰性创建：若在无事件循环的同步上下文创建，是否绑定错误 loop | Python 3.10+ 的 `Lock` 创建时不绑定 loop；统一在 `get_lock()`（路由内 / 测试 `asyncio.run` 内）创建，并用 `threading.Lock` 保护字典并发 | `tests/test_session.py` 的串行与隔离用例通过 |
+| P2-5 | 手工冒烟时第一次 `GET /v1/health` 在 uvicorn 完成启动前执行，报 `WinError 10061 连接被拒绝` | 客户端改为重试轮询（40 × 250ms）；这是启动竞态，不是服务缺陷 | 重试后 200；P3 的 `server_launcher` 将采用同样的探活重试 |
+| P2-6 | 成功分支若走真实 server 会请求外部大模型（费用 / 网络依赖），不适合自动化冒烟 | 成功分支由 `tests/test_server_api.py` 用 `httpx.ASGITransport` + 假服务覆盖；手工冒烟只验 `/v1/health`、`/v1/modes`、`/v1/chat` 错误分支（`mode=nonexistent` → `BAD_REQUEST`）与 `/v1/interrupt` | 事件流格式、seq/turn_id、错误码、idle 收敛均符合协议 |
+
+### 验收结果
+
+- `python -m server --port 8799` 无 GUI 正常启动；`GET /v1/health` → `{"status":"ok","version":"0.1.0","model":"deepseek-chat"}`。
+- `GET /v1/modes` 返回 `emotion` / `office` 两个模式及 `display_name`。
+- `POST /v1/chat`（`mode=nonexistent`）返回 `turn.start → state(thinking) → error(BAD_REQUEST) → state(idle)`。
+- `POST /v1/interrupt` 返回 `{"ok": true}`。
+- token：未配置 `HADALI_TOKEN` 放行并只打一条 warning；配置后无/错 token 返回 401（见 `tests/test_server_api.py::TestAuthAndInterrupt`）。
+- 未在冒烟中请求真实大模型；成功分支的事件顺序由假服务测试保证。
 
 ---
 
