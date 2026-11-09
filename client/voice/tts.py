@@ -1,5 +1,8 @@
 """
-聊天机器人语音合成模块（TTS）
+聊天机器人语音合成模块（TTS，client 表现层）
+
+P3 由根目录 chatbotTTS.py 迁移而来，逻辑未改；`.env` 改为按项目根定位
+（`utils.path_tool.get_abs_path`），避免文件移动后读不到配置。
 
 职责：
 - 为桌宠提供语音播报能力：AI 回复完成后同步朗读回复内容
@@ -19,7 +22,6 @@ import asyncio
 import base64
 import io
 import itertools
-import os
 import queue
 import re
 import threading
@@ -27,9 +29,10 @@ import traceback
 
 import numpy as np
 
-# 模块所在目录（用于将相对配置路径解析为绝对路径，保证任意工作目录启动均可找到）
-_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
-_ENV_PATH = os.path.join(_MODULE_DIR, '.env')
+from utils.path_tool import get_abs_path
+
+# .env 位于项目根目录（按项目根定位，保证任意工作目录启动均可找到）
+_ENV_PATH = get_abs_path('.env')
 
 
 def _load_env() -> dict:
@@ -416,7 +419,7 @@ def stop() -> None:
 def _main_test() -> None:
     """按当前 TTS_MODE 播放一段中英混说测试文本，验证服务链路
 
-    用法：python chatbotTTS.py
+    用法：python -m client.voice.tts
     """
     import time
     text = "你好呀，我是你的 AI 助手哈达莉。This is a mixed language test, 中英混说也可以很自然。今天天气不错，要一起喝杯咖啡吗？"

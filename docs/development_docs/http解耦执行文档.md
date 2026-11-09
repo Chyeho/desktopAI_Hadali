@@ -656,6 +656,9 @@ async def event_stream(req: ChatRequest):
 
 ### P3：client（transport + UI 拆分 + launcher + 打断）
 
+> 状态：已完成（2026-11-09），问题记录见 [http解耦开发记录.md](./http解耦开发记录.md)。
+> 实现补充：qasync spike 通过但无收益，最终按方案 B（QThread）；`READY_TIMEOUT` 实测需 20s（非 5s）；根 `chatbot.py` 过渡适配器保留（`tests/test_chatbot.py` 依赖其模块级全局）；`chatbotUI.py` / `chatbotTTS.py` 已删除。
+
 **改动文件**
 
 | 文件 | 内容 |
@@ -699,7 +702,7 @@ async def event_stream(req: ChatRequest):
 
 - 窗口先 `show()`，探活 / 拉起放在 `ServerLaunchWorker(QThread)` 中执行，**不阻塞主线程启动**。
 - 默认地址 `http://127.0.0.1:8765`；支持 `--server-url` 与 `HADALI_SERVER_URL`。
-- 探活超时 0.5s；首次失败则拉起子进程；健康检查轮询上限 5s。
+- 探活超时 0.5s；首次失败则拉起子进程；健康检查轮询上限 **20s**（实测本机冷启动约 13.5s，5s 会误杀仍在导入依赖的子进程）。
 - token：`secrets.token_urlsafe(32)`；通过环境变量 `HADALI_TOKEN` 传给子进程。
 - `--port 0`：server 在 stdout 输出一行 `HADALI_SERVER_READY {"port":<N>}`；launcher 解析。
 - Windows 下 `subprocess.CREATE_NO_WINDOW`，避免黑色控制台。
@@ -895,9 +898,11 @@ curl -H "Content-Type: application/json" -d "{\"mode\":\"office\"}" http://127.0
 - [ ] 4. 语音按现有 `TTS_MODE` 播报；新一轮回复能打断上一轮播报（session 机制不退化）。
 - [ ] 5. 杀掉 server 进程 → 客户端明确错误提示、不卡死；重启后恢复可用。
 - [ ] 6. 说话中途 `POST /v1/interrupt` → 语音与动作立即停止。
-- [ ] 7. `pytest -q` 全绿；`python -m server --port 0` 在无 GUI 环境可跑。
+- [x] 7. `pytest -q` 全绿（255 passed）；`python -m server --port 0` 在无 GUI 环境可跑。
 - [ ] 8. `expression_tester.py` 仍可独立运行。
-- [ ] 9. `git log` 能看到分阶段提交；`git status` 干净。
+- [x] 9. `git log` 能看到分阶段提交；`git status` 干净。
+
+> 1–6、8 需要显示器/声音环境手工验收；P3 已完成的程序化冒烟（窗口渲染、事件映射、后端起停、真实 SSE）见 [http解耦开发记录.md](./http解耦开发记录.md)。
 
 ---
 

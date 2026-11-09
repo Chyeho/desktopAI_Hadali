@@ -7,8 +7,9 @@ AI 对话模块（桌宠对话门面）
 - 对外提供 switch_mode（多 agent 模式切换的扩展通道，供后续 UI 右键菜单接入）
 
 P1 过渡说明：本模块是 core 层之上的**兼容适配器**，保留模块级 `_agent` /
-`last_partial_reply` 与 `live2d_model` 形参，供现有 UI（chatbotUI.py）无缝使用；
-对话逻辑已下沉到 core/facade.py 与 agent/。P3 引入 client/transport 后本适配器退出。
+`last_partial_reply` 与 `live2d_model` 形参，供旧入口与既有测试使用；
+对话逻辑已下沉到 core/facade.py 与 agent/。P3 起 UI 已改为 client/transport，
+本适配器仅为兼容保留（tests/test_chatbot.py 依赖其模块级全局）。
 live2d 表情动画改由 client/emotion_map.py 承担（按需懒加载，避免 core 依赖 UI）。
 """
 from modelFactory.factory import ChatModelFactory

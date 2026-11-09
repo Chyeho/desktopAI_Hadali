@@ -82,7 +82,55 @@
 
 ## P3：client
 
-（待开始）
+### 状态
+
+- [x] 代码完成（`client/transport`、`client/ui`、`client/voice`、`client/server_launcher.py`、`client/main.py`；根 `main.py` 改为 shim）
+- [x] `pytest -q` 全绿（`255 passed in 28.47s`，新增 11 个 transport 用例，旧断言零改动）
+- [x] 自动冒烟：后端起停、真实 SSE 端到端、UI 事件映射、窗口与模型渲染
+- [x] commit
+- [ ] 图形界面手工验收（拖拽 / 滚轮 / 托盘 / 语音 / 表情观感，见文末清单）
+
+### 问题记录
+
+| 编号 | 问题描述 | 解决方案 | 结果 |
+|---|---|---|---|
+| P3-1 | 要求先做一次不写入依赖的 qasync spike：验证 qasync 与 `QOpenGLWidget` + 120fps `timerEvent` 共存 | 用 `uv pip install --python .venv\Scripts\python.exe qasync`（0.28.0，**未改** `pyproject.toml` / `uv.lock`），临时脚本在 `QEventLoop` 下跑 2.5s，与纯 `QApplication.exec()` 基线对比；spike 后立即 `uv pip uninstall`，环境恢复 | qasync：`ticks=165 frames=158 gl_ok=True`；基线：`ticks=159 frames=154 gl_ok=True`。无 GL 报错、帧数无明显差异。结论：**共存可行，但无收益且需新增依赖**，P3 仍按方案 B（QThread）实施 |
+| P3-2 | `SseWorker` 的信号直接连到普通 Python 回调时，PySide6 以**排队方式**投递；测试里 `worker.wait()` 返回后立即断言，事件列表还是空的 | 测试改为 `worker.wait()` 后再 `processEvents()` 轮询（`_wait_until`）。这也从侧面证明：UI 槽函数确实在主线程执行，满足 live2d 单线程约束 | `tests/test_transport.py` 由 3 failed 变为全绿 |
+| P3-3 | 若把 `SseWorker.event` 直接接到 UI 方法，跨线程调用依赖 AutoConnection 推断；显式写 `QueuedConnection` 又会与 Qt 的线程亲和性重复 | `worker.event` → `transport.event_received`（信号→信号直连），再由 `ImageWindow` 在主线程接收；`Transport` 只暴露信号，不暴露 worker | 传输线程不触碰任何控件 / `Model.*` |
+| P3-4 | 执行文档约定“拉起后健康检查轮询上限 5s”，但本机实测 `python -m server --port 0` 从进程创建到输出 `HADALI_SERVER_READY` 需要 **13.5s**（langchain 等重依赖导入） | `READY_TIMEOUT` 改为 20s；等待期间窗口照常显示，用户提交时提示“后端正在启动，请稍候再试” | 同端口重跑 launcher 冒烟：`ready` 正常、`probe=True`、退出后 `probe=False` |
+| P3-5 | 第一次 launcher 冒烟直接报“后端启动失败”，`logs/server.log` 为空 | 根因是 P3-4：5s 超时后在子进程仍在 import 阶段就 `terminate()`，进程来不及写任何日志。修正超时后复现不出；同时补上 `stop()` 里关闭日志文件句柄 | 冒烟通过；失败提示保留“请查看 logs/server.log”便于排查 |
+| P3-6 | 复用“已在运行的外部后端”时 token 未知：若客户端自己生成 token 去探活，会被 401 误判为后端不可用，进而重复拉起导致端口冲突 | 探活分两步：先带 token、再不带 token；任一成功即复用，并把实际可用的 token（可能为空串）通过 `ready` 信号回填给传输层 | 手工 `python -m server`（无 token）与自动拉起（带 token）两种场景均可用 |
+| P3-7 | `chatbotTTS.py` 迁移到 `client/voice/tts.py` 后，原来的 `_MODULE_DIR` + `.env` 相对定位会失效（读到 `client/voice/.env`） | 改为 `utils.path_tool.get_abs_path('.env')`（项目根定位）；`tests/test_tts.py` 仅改 import 为 `from client.voice import tts as chatbotTTS` | TTS 21 个用例断言零改动通过；`DASHSCOPE_MODEL` 等默认值不变 |
+| P3-8 | 执行文档写“P3 移除根 `chatbot.py` 适配器”，但 `tests/test_chatbot.py` 依赖 `chatbot._agent` / `chatbot.ChatModelFactory` 这些模块级全局（15 个用例），删除会使测试断言失效 | **保留** `chatbot.py` 过渡适配器：它只依赖 `core.facade` + `modelFactory`，不 import Qt / live2d / httpx，不违反依赖方向；删除时机改为“测试不再依赖模块级全局之后” | `pytest` 全绿；`client` 无 langchain/openai import |
+| P3-9 | 若在 `state=idle` 时一律 `ChatBox.to_input_state()`，会清空正在打字机显示的回复，违反“打字机回复 → 点击恢复输入”的既有交互 | `idle` 只做两件事：`_turn_active=False`；仅当聊天框仍处于 `thinking`（异常路径没收到 text/error）才兜底回输入态。回复态保留，由用户点击恢复 | 事件映射冒烟：`after_idle_state = reply` |
+| P3-10 | 迁移后 `MODEL_PATH` 仍按 `chatbotUI.py` 所在目录拼接，拆到 `client/ui/` 后路径会指向不存在的位置 | 改用 `get_abs_path("Resources/v3/hiyori/hiyori_free_t08.model3.json")` | UI 冒烟：`MODEL_PATH_EXISTS=True`、`MODEL_LOADED=True`、`FIT_DONE=True` |
+
+### 自动冒烟结果
+
+- 后端起停：`ServerLauncher` 自动拉起 → `ready(http://127.0.0.1:1864)` → `probe=True` → `shutdown()` 后 `probe=False`（子进程已终止）。
+- 真实 SSE 端到端（非法 mode，不请求大模型）：`['turn.start','state','error','state']`，`error.code=BAD_REQUEST`，传输层 `failed` 为空。
+- UI 事件映射（注入假 TTS）：
+  - `turn.start` → `thinking`；`text.delta` → `reply`（“哈达莉：”）
+  - `turn.end` → `speak("你好呀")`；`state=idle` → 仍为 `reply`、`_turn_active=False`
+  - `error` → 显示“哈达莉：（出错了）模型超时”、`allow_reset=True`、不播报
+  - `interrupt_turn()` → `input`，TTS `stop()` 被调用 1 次
+- 窗口渲染：模型加载、自动适配收敛、聊天框初始为 `input`。
+
+### 依赖方向
+
+- `client/**` 无 `langchain` / `openai` / 旧 `chatbot` 门面 import。
+- `core/ agent/ tools/ utils/ modelFactory/` 仍无 `PySide6|live2d|httpx|fastapi`。
+- 全仓已无 `chatbotUI` / `chatbotTTS` 的代码引用（仅历史注释与测试变量名保留）。
+
+### 待手工验收（需要显示器与声音）
+
+1. `python main.py` 显示桌宠；拖拽、滚轮缩放、托盘、右键菜单。
+2. 真实对话：思考中 → 打字机 → 点击恢复输入。
+3. 表情动作播放与 1.5s 平滑回常态；说话期间自动眨眼/呼吸开关。
+4. 语音按 `TTS_MODE` 播报；新一轮可打断上一轮。
+5. 对话中杀掉 server 进程 → 明确错误提示、不卡死；重启客户端后恢复。
+6. 说话/动作中按 Esc 或右键“停止当前回复” → 语音与动作立即停止。
+
 
 ---
 
