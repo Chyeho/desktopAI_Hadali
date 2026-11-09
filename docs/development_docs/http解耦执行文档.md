@@ -568,17 +568,19 @@ class Transport(QObject):
 
 ### P1：core 去 UI 化（不动 server/client）
 
+> 状态：已完成（2026-11-09），问题记录见 [http解耦开发记录.md](./http解耦开发记录.md)。
+
 **改动文件**
 
 | 文件 | 改动 |
 |---|---|
-| `agent/chat_agent.py` | `chat()` 删除 `live2d_model` 形参；删除 `drive_expression` import 与调用；记录 `tool_calls`、`steps`、`mode`、`latency_ms`；返回 `TurnResult`；新增可选 `history_file` 参数并传给 `HistoryStore`；对 `emotion` 用 `VALID_EMOTIONS` 校验，非法回退 `neutral` |
+| `agent/chat_agent.py` | `chat()` 删除 `live2d_model` 形参；删除 `drive_expression` import 与调用；记录 `tool_calls`、`steps`、`mode`、`latency_ms`；返回 `TurnResult`；新增可选 `history_file` 参数并传给 `HistoryStore`；对 `emotion` 用 `validate_emotion` 校验，非法回退 `neutral` |
 | `agent/expression_driver.py` | 仅保留 `VALID_EMOTIONS` 与 `validate_emotion()`；删除 `EMOTION_MOTION_MAP` / `drive_expression`（迁 client） |
 | `core/__init__.py` | 新增 |
-| `core/session.py` | 新增：`SessionManager`（P1 先提供单会话 + 指定 history 文件能力）；从 `agent.chat_agent` re-export `TurnResult` / `ToolCallRecord` |
-| `core/facade.py` | 由 `chatbot.py` 演化：`_load_env`、`init_api_key`、`init_api_key_from_env`、`chat_with_model`、`switch_mode`；保留 `_agent` 与 `last_partial_reply` 兼容语义 |
-| `chatbot.py` | 改为兼容 shim：`sys.modules[__name__] = core.facade`（保证 `patch("chatbot.ChatModelFactory")` 命中同一模块对象） |
-| `tests/test_chat_agent.py` | 删除 6 处 `live2d_model=None` 实参（断言不变） |
+| `core/session.py` | **推迟到 P2**（P1 无多会话调用方，避免无调用方的抽象） |
+| `core/facade.py` | 由 `chatbot.py` 演化，但保持**无状态**：`load_env` / `create_agent(..., factory_cls)` / `create_agent_from_env` / `chat` / `switch_mode`；不持有 `_agent` 与 UI 状态 |
+| `chatbot.py` | 改为**过渡适配器**：保留 `_agent` / `last_partial_reply` / `ChatModelFactory` 与 `chat_with_model(user_input, live2d_model=None)` 签名，委托 `core.facade`；传入 `live2d_model` 时懒加载 `client.emotion_map.drive_expression`（P3 移除该适配器） |
+| `tests/test_chat_agent.py` | 删除 5 处 `live2d_model=None` 实参（断言不变） |
 | `tests/test_expression_driver.py` | 改 import：`VALID_EMOTIONS` 来自 `agent.expression_driver`；`EMOTION_MOTION_MAP` / `drive_expression` 来自 `client.emotion_map`（断言不变） |
 | `client/emotion_map.py` | 新增：`EMOTION_MOTION_MAP` + `drive_expression(emotion, live2d_widget)`（映射与 emit 逻辑照搬；未命中映射直接返回；不 import Qt，也不 import agent） |
 | `client/__init__.py` | 新增 |
@@ -831,8 +833,8 @@ async def event_stream(req: ChatRequest):
 
 | 文件 | 改动 |
 |---|---|
-| `tests/test_chatbot.py` | 零改动（依赖 `chatbot.py` shim） |
-| `tests/test_chat_agent.py` | 仅 6 处删除 `live2d_model=None` 实参 |
+| `tests/test_chatbot.py` | 零改动（依赖 `chatbot.py` 适配器保留的同名签名） |
+| `tests/test_chat_agent.py` | 仅 5 处删除 `live2d_model=None` 实参 |
 | `tests/test_expression_driver.py` | 仅拆 import 路径 |
 | `tests/test_tts.py` | 仅改 import 为 `client.voice.tts` |
 | 其余 10 个 | 零改动 |
@@ -898,7 +900,7 @@ curl -H "Content-Type: application/json" -d "{\"mode\":\"office\"}" http://127.0
 
 ## 13. 已确认的决策（2026-11-09）
 
-1. **测试改动边界**：采用方案 A —— P1 删除 `ChatAgent.chat(..., live2d_model=)` 形参后，同步删除 `tests/test_chat_agent.py` 6 处实参，断言不变。
+1. **测试改动边界**：采用方案 A —— P1 删除 `ChatAgent.chat(..., live2d_model=)` 形参后，同步删除 `tests/test_chat_agent.py` 5 处实参，断言不变（`tests/test_chatbot.py:141` 的 1 处属过渡适配器签名，保留）。
 2. **`httpx-sse` 声明**：同意在 `pyproject.toml` 显式声明 `httpx` 与 `httpx-sse`。
 3. **qasync**：同意在 P3 前做一次不写入依赖的 spike；P1/P2 仍按 QThread 方案推进。
 

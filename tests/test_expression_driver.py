@@ -1,14 +1,11 @@
-"""单元测试：情感驱动 agent/expression_driver.py
+"""单元测试：情感标签校验（agent/expression_driver.py）与情感驱动（client/emotion_map.py）
 
 覆盖情感标签校验、动作映射、drive_expression 的分支逻辑。
 """
 from unittest.mock import MagicMock
 
-from agent.expression_driver import (
-    EMOTION_MOTION_MAP,
-    VALID_EMOTIONS,
-    drive_expression,
-)
+from agent.expression_driver import VALID_EMOTIONS
+from client.emotion_map import EMOTION_MOTION_MAP, drive_expression
 
 
 class TestValidEmotions:
