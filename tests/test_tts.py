@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-import chatbotTTS
+from client.voice import tts as chatbotTTS
 
 
 class TestCleanText:

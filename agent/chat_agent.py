@@ -4,15 +4,18 @@
 - 大模型对话（langchain ChatOpenAI，工厂模式生产）
 - 轻量工具调用循环（bind_tools：模型请求工具 → 执行 → 结果回填 → 再思考，直到给出最终回复）
 - 对话历史持久化（JSON 文件，关闭程序后仍能记住）
-- 最终回复 JSON 解析（情感标签 + 回复内容），并驱动 live2d 表情
+- 最终回复 JSON 解析（情感标签 + 回复内容），返回结构化回合结果
 - 支持多 agent 模式切换（set_mode：提示词 / 工具白名单 / 生成参数随模式切换）
 
 说明：不使用 ReAct / create_agent 等重型框架，采用手写工具调用循环，
-逻辑可控，便于情感陪伴场景下的严格 JSON 输出与表情驱动。
+逻辑可控，便于情感陪伴场景下的严格 JSON 输出。
+本模块不依赖 UI：情感标签只做合法性校验，live2d 表情动画由 client 层负责。
 '''
 import json
 import os
 import re
+import time
+from typing import TypedDict
 
 from langchain_core.messages import (
     AIMessage,
@@ -27,7 +30,7 @@ from langchain_core.messages import (
 from modelFactory.factory import ChatModelFactory
 from agent.tool_manager import ToolManager
 from agent.mode_configs import DEFAULT_MODE, MODE_REGISTRY
-from agent.expression_driver import drive_expression
+from agent.expression_driver import validate_emotion
 from utils.prompt_loader import load_prompt
 from utils.path_tool import get_abs_path
 from utils.logger_handler import logger
@@ -39,6 +42,24 @@ HISTORY_WINDOW = 30
 # 历史消息持久化目录与文件（当前单用户单会话，固定一个文件；未来多会话时按会话 ID 区分）
 HISTORY_DIR = get_abs_path("chat_history")
 HISTORY_FILE = os.path.join(HISTORY_DIR, "default.json")
+
+
+class ToolCallRecord(TypedDict):
+    '''一次工具调用的结构化记录'''
+    name: str            # 工具名
+    args: dict           # 模型给出的入参
+    ok: bool             # 是否执行成功
+    duration_ms: float   # 执行耗时（毫秒）
+
+
+class TurnResult(TypedDict):
+    '''一轮对话的结构化结果（运行时即普通 dict，便于序列化与向后兼容）'''
+    emotion: str                    # 情感标签（已校验，非法值回退 neutral）
+    reply: str                      # 剥离情感标签后的回复文本
+    mode: str                       # 本轮使用的 agent 模式名
+    steps: int                      # 实际模型调用轮数
+    tool_calls: list[ToolCallRecord]  # 本轮工具调用记录
+    latency_ms: float               # 整轮耗时（毫秒）
 
 
 class HistoryStore:
@@ -140,10 +161,13 @@ def parse_reply_json(content: str) -> tuple[str, str]:
 class ChatAgent:
     '''对话 agent：按模式加载模型与工具，执行工具调用循环，管理历史并输出情感与回复'''
 
-    def __init__(self, model_factory: ChatModelFactory, tool_manager: ToolManager = None):
+    def __init__(self, model_factory: ChatModelFactory, tool_manager: ToolManager = None,
+                 history_file: str = None):
         self.model_factory = model_factory
         self.tool_manager = tool_manager or ToolManager()
-        self.history = HistoryStore()
+        # history_file 为空时沿用默认单会话文件；多会话/测试注入时可指定独立文件
+        self.history_file = history_file
+        self.history = HistoryStore(file_path=history_file) if history_file else HistoryStore()
         self.mode_config: dict | None = None
         self.llm = None               # 当前模式的 ChatOpenAI 实例
         self.llm_with_tools = None    # bind_tools 后的模型（无工具时等同 llm）
@@ -185,24 +209,30 @@ class ChatAgent:
         self.history.set_system_prompt(system_prompt)
         self.history.save()
 
-    def chat(self, user_input: str, live2d_model=None) -> dict:
+    def chat(self, user_input: str) -> TurnResult:
         '''处理一次用户输入
 
         流程：追加用户消息 → 工具调用循环（思考 → 调工具 → 再思考 → 最终回复）
-        → 解析回复 JSON（emotion / reply）→ 情感驱动 live2d → 保存历史。
+        → 解析回复 JSON（emotion / reply）→ 保存历史 → 返回结构化回合结果。
 
-        返回：{"emotion": 情感标签, "reply": 回复文本}
+        返回 TurnResult：emotion / reply / mode / steps / tool_calls / latency_ms。
+        live2d 表情动画不在本层触发，由 client 收到 emotion 后播放。
         '''
+        started_at = time.perf_counter()
+
         # 1. 记录用户输入
         self.history.append(HumanMessage(content=user_input))
         self.history.save()
 
         final_content = ""
+        tool_records: list[ToolCallRecord] = []
+        steps = 0
         try:
             # 2. 工具调用循环
             for step in range(MAX_TOOL_STEPS):
+                steps = step + 1
                 logger.info(
-                    f"[ChatAgent]第 {step + 1} 轮模型调用，当前历史消息数：{len(self.history.messages)}"
+                    f"[ChatAgent]第 {steps} 轮模型调用，当前历史消息数：{len(self.history.messages)}"
                 )
                 ai_msg: AIMessage = self.llm_with_tools.invoke(self.history.messages)
                 self.history.append(ai_msg)
@@ -220,8 +250,11 @@ class ChatAgent:
                     call_id = tc.get("id", "")
                     tool = self.tool_map.get(name)
 
+                    tool_started = time.perf_counter()
+                    ok = True
                     if tool is None:
                         result = f"工具 {name} 不可用"
+                        ok = False
                         logger.error(f"[ChatAgent]模型请求调用了未授权/不存在的工具：{name}")
                     else:
                         logger.info(f"[ChatAgent]调用工具：{name}，入参：{args}")
@@ -230,8 +263,15 @@ class ChatAgent:
                             logger.info(f"[ChatAgent]工具 {name} 调用成功")
                         except Exception as e:
                             result = f"工具 {name} 执行出错：{str(e)}"
+                            ok = False
                             logger.error(f"[ChatAgent]工具 {name} 调用失败：{str(e)}")
 
+                    tool_records.append({
+                        "name": name,
+                        "args": args,
+                        "ok": ok,
+                        "duration_ms": round((time.perf_counter() - tool_started) * 1000, 2),
+                    })
                     self.history.append(
                         ToolMessage(content=str(result), tool_call_id=call_id, name=name)
                     )
@@ -240,13 +280,19 @@ class ChatAgent:
                 logger.warning("[ChatAgent]工具调用达到最大轮数，强制结束循环")
                 final_content = final_content or "我刚刚处理得有点久呢，用户可以再问我一次吗？"
 
-            # 4. 解析最终回复：emotion 驱动 live2d 表情，reply 用于聊天框展示与 TTS 播报
+            # 4. 解析最终回复：emotion 供 client 播放表情，reply 用于聊天框展示与 TTS 播报
             emotion, reply = parse_reply_json(final_content)
-            # live2d_model 实为 Live2DWidget 实例（UI 层传入），通过其信号跨线程请求播放表情动作
-            drive_expression(emotion, live2d_widget=live2d_model)
+            emotion = validate_emotion(emotion)
 
             self.history.save()
-            return {"emotion": emotion, "reply": reply}
+            return TurnResult(
+                emotion=emotion,
+                reply=reply,
+                mode=self.mode_config.get("name", "") if self.mode_config else "",
+                steps=steps,
+                tool_calls=tool_records,
+                latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            )
         except Exception:
             # 异常时也保存已有历史（含用户消息与工具过程），便于排查
             self.history.save()

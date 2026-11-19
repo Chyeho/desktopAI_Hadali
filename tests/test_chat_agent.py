@@ -351,7 +351,7 @@ class TestChatAgentChat:
         agent.llm_with_tools.invoke = MagicMock(
             return_value=AIMessage(content='{"emotion": "happy", "reply": "你好！"}')
         )
-        result = agent.chat("你好", live2d_model=None)
+        result = agent.chat("你好")
         assert result["emotion"] == "happy"
         assert result["reply"] == "你好！"
 
@@ -368,7 +368,7 @@ class TestChatAgentChat:
             ),
             AIMessage(content='{"emotion": "neutral", "reply": "现在是下午"}'),
         ])
-        result = agent.chat("几点了", live2d_model=None)
+        result = agent.chat("几点了")
         assert result["emotion"] == "neutral"
         assert result["reply"] == "现在是下午"
         # 工具结果应回填到历史
@@ -385,7 +385,7 @@ class TestChatAgentChat:
             ),
             AIMessage(content='{"emotion": "neutral", "reply": "抱歉"}'),
         ])
-        result = agent.chat("测试", live2d_model=None)
+        result = agent.chat("测试")
         assert result["reply"] == "抱歉"
         tool_msgs = [m for m in agent.history.messages if isinstance(m, ToolMessage)]
         assert "不可用" in tool_msgs[0].content
@@ -400,7 +400,7 @@ class TestChatAgentChat:
                 tool_calls=[{"name": "get_current_time", "args": {}, "id": "tc1"}],
             )
         )
-        result = agent.chat("无限循环", live2d_model=None)
+        result = agent.chat("无限循环")
         # 达到 MAX_TOOL_STEPS 后应返回兜底回复
         assert agent.llm_with_tools.invoke.call_count == MAX_TOOL_STEPS
         assert isinstance(result["emotion"], str)
@@ -411,6 +411,6 @@ class TestChatAgentChat:
         agent.llm_with_tools.invoke = MagicMock(
             return_value=AIMessage(content='{"emotion": "happy", "reply": "好的"}')
         )
-        agent.chat("你好呀", live2d_model=None)
+        agent.chat("你好呀")
         human_msgs = [m for m in agent.history.messages if isinstance(m, HumanMessage)]
         assert any(m.content == "你好呀" for m in human_msgs)

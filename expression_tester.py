@@ -2,7 +2,7 @@
 Live2D 表情 / 动作 调试台（独立运行）
 
 用途：单独跑这个脚本，可拖动滑条实时调整 hiyori 的表情参数、播放动作、
-     把满意的一组参数保存为"神态预设"以便后续接入 chatbotUI。
+     把满意的一组参数保存为"神态预设"以便后续接入 client/ui。
 
 运行：
     python expression_tester.py
@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QSlider, QVBoxLayout, QWidget, QMessageBox,
 )
 
-# 模型路径（与 chatbotUI.MODEL_PATH 保持一致）
+# 模型路径（与 client/ui/live2d_widget.MODEL_PATH 保持一致）
 MODEL_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "Resources", "v3", "hiyori", "hiyori_free_t08.model3.json",
@@ -120,7 +120,7 @@ class Live2DTestWidget(QOpenGLWidget):
             self.model.SetOffset(self.offset_x, self.offset_y)
             self.need_fit = True    # 窗口变化后重新适配居中
 
-    # ---------- 精确适配：读像素求模型包围盒（与 chatbotUI 同思路） ----------
+    # ---------- 精确适配：读像素求模型包围盒（与 client/ui/live2d_widget 同思路） ----------
     def compute_model_bbox(self):
         """读取当前帧，返回模型非透明像素在窗口坐标下的包围盒 (x0, y0, x1, y1)"""
         w, h = self.width(), self.height()
