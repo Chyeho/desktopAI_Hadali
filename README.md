@@ -76,6 +76,7 @@
 - `prompts/`             系统提示词文本（不硬编码在代码中）
 - `config/`              配置文件（提示词路径等 yaml）
 - `bench/`               批量评测脚本与固定 prompt（见“性能评测”）
+- `docs/`                文档：前后端接口 JSON 契约（`前后端接口JSON契约_v1.md`）与开发文档
 - `expression_tester.py` Live2D 表情动画调试台（独立运行，见下文）
 - `resources.py`         资源目录常量
 - `Resources/`           Live2D 模型资源（HiYori 模型 + 动作）
