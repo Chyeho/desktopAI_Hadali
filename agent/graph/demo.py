@@ -11,7 +11,7 @@ from agent.graph.runner import CompanionGraphAgent
 from utils.path_tool import get_abs_path
 
 
-def main() -> None:
+def _build_agent() -> CompanionGraphAgent:
     env = load_env(get_abs_path(".env"))
     api_key = env.get("API_KEY", "")
     if not api_key:
@@ -23,7 +23,11 @@ def main() -> None:
         model=env.get("MODEL", DEFAULT_MODEL),
     )
     llm = factory.generator(temperature=0.7, max_tokens=1024, top_p=0.9)
-    agent = CompanionGraphAgent(llm)
+    return CompanionGraphAgent(llm)
+
+
+def main() -> None:
+    agent = _build_agent()
 
     print("哈达莉已就绪，输入 exit / quit 退出。")
     while True:
@@ -35,8 +39,12 @@ def main() -> None:
             continue
         if user_input.lower() in {"exit", "quit"}:
             break
-        result = agent.chat(user_input)
-        print(f"哈达莉：{result['reply']}")
+
+        print("哈达莉：", end="", flush=True)
+        for kind, payload in agent.stream_chat(user_input):
+            if kind == "delta":
+                print(payload, end="", flush=True)
+        print()
 
 
 if __name__ == "__main__":
