@@ -30,6 +30,7 @@ class ImageWindow(QWidget):
         self._backend_ready = False
         self._turn_active = False     # 本轮是否仍在进行（turn.start ~ state=idle）
         self._error_shown = False     # 本轮是否已展示错误（错误轮不播报）
+        self._delta_received = False  # 本轮是否收到过流式增量（用于一次性降级）
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -119,16 +120,26 @@ class ImageWindow(QWidget):
         if name == "turn.start":
             self._turn_active = True
             self._error_shown = False
+            self._delta_received = False
             self.chat_box.to_thinking_state()
         elif name == "state":
             self._on_state(str(payload.get("value", "")))
         elif name == "text.delta":
             text = payload.get("text", "")
             if text:
-                self.chat_box.finalize_ai_reply(text)
+                self._delta_received = True
+                self.chat_box.append_ai_delta(text)
         elif name == "text.done":
-            # 本期 text.delta 已整段下发；未来流式时在此收尾
-            pass
+            # 流式：增量已展示，这里只解除输入锁；
+            # 降级：未收到增量时用完整文本走打字机
+            if not self._delta_received:
+                full_text = payload.get("text", "")
+                if full_text:
+                    self.chat_box.finalize_ai_reply(full_text)
+                else:
+                    self.chat_box.finish_ai_reply()
+            else:
+                self.chat_box.finish_ai_reply()
         elif name == "emotion":
             drive_expression(payload.get("name", ""), live2d_widget=self.live2d_widget)
         elif name == "turn.end":

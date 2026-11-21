@@ -84,6 +84,34 @@ class ChatBox(QTextEdit):
         self._typing_pos = 0
         self._typing_timer.start(self.TYPE_INTERVAL)
 
+    def begin_ai_reply(self):
+        """流式回复开始：清空并显示“哈达莉：”，等待逐 token 追加"""
+        self._typing_timer.stop()
+        self.state = 'reply'
+        self.prefix_visible = False
+        self.allow_reset = False
+        self.setReadOnly(True)
+        self.setPlainText("哈达莉：")
+        self.moveCursor(QTextCursor.MoveOperation.End)
+
+    def append_ai_delta(self, text):
+        """流式增量追加：直接把 token 插到末尾，不做打字机"""
+        if self.state != 'reply':
+            self.begin_ai_reply()
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text)
+        self.moveCursor(QTextCursor.MoveOperation.End)
+        vbar = self.verticalScrollBar()
+        vbar.setValue(vbar.maximum())
+
+    def finish_ai_reply(self):
+        """流式回复结束：允许点击恢复输入态"""
+        self._typing_timer.stop()
+        self.state = 'reply'
+        self.prefix_visible = False
+        self.allow_reset = True
+
     def show_error(self, message):
         """错误提示：直接显示完整错误信息（不走打字机），点击即可回到输入态"""
         self._typing_timer.stop()

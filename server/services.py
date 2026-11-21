@@ -1,7 +1,7 @@
 '''服务容器：组装 core 层能力，供路由依赖注入与测试替换
 
-路由只依赖本类的这几个方法/属性：lock / chat / list_modes / set_mode /
-current_mode / model_name / turns_file，测试可注入同名鸭子类型。
+路由只依赖本类的这几个方法/属性：lock / chat / stream_chat / list_modes /
+set_mode / current_mode / model_name / turns_file，测试可注入同名鸭子类型。
 '''
 from fastapi import Request
 
@@ -36,14 +36,29 @@ class Services:
         '''该会话的异步锁（同会话串行）'''
         return self.sessions.get_lock(session_id)
 
-    def chat(self, session_id: str, text: str, mode: str = None) -> TurnResult:
-        '''取会话 agent（必要时切换模式）并执行一轮对话'''
+    def _resolve_agent(self, session_id: str, mode: str = None):
+        '''取会话 agent，必要时切换到目标模式'''
         agent = self.sessions.get_agent(session_id)
         target = mode or self.current_mode
         current = (agent.mode_config or {}).get("name")
         if target and current != target:
             agent.set_mode(target)
-        return agent.chat(text)
+        return agent
+
+    def chat(self, session_id: str, text: str, mode: str = None) -> TurnResult:
+        '''取会话 agent（必要时切换模式）并执行一轮对话'''
+        return self._resolve_agent(session_id, mode).chat(text)
+
+    def stream_chat(self, session_id: str, text: str, mode: str = None):
+        '''返回同步增量生成器：("delta", 文本) / ("done", TurnResult)
+
+        引擎不支持流式（如 legacy ChatAgent）时返回 None，路由退回一次性下发。
+        '''
+        agent = self._resolve_agent(session_id, mode)
+        stream = getattr(agent, "stream_chat", None)
+        if not callable(stream):
+            return None
+        return stream(text, session_id=session_id)
 
     def list_modes(self) -> list[dict]:
         return [

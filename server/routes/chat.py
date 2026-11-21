@@ -1,5 +1,6 @@
 '''对话路由：POST /v1/chat（SSE）与 POST /v1/interrupt'''
 import asyncio
+import threading
 import time
 import uuid
 
@@ -47,6 +48,32 @@ def _map_error(exc: Exception) -> str:
     return ErrorCode.INTERNAL.value
 
 
+async def _iterate_sync_generator(gen):
+    '''把同步生成器桥接到事件循环：工作线程生产 + asyncio.Queue 消费
+
+    agent 图执行是同步阻塞的，直接在事件循环里迭代会卡住整个 server。
+    '''
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def worker():
+        try:
+            for item in gen:
+                loop.call_soon_threadsafe(queue.put_nowait, (False, item))
+            loop.call_soon_threadsafe(queue.put_nowait, (True, None))
+        except BaseException as exc:  # 生成器内部异常需回传主线程
+            loop.call_soon_threadsafe(queue.put_nowait, (True, exc))
+
+    threading.Thread(target=worker, name="graph-stream", daemon=True).start()
+    while True:
+        finished, payload = await queue.get()
+        if finished:
+            if payload is not None:
+                raise payload
+            return
+        yield payload
+
+
 @router.post("/chat")
 async def chat(req: ChatRequest, services: Services = Depends(get_services)):
     '''一轮对话：以 SSE 事件流返回思考状态、回复、情感、工具调用与指标'''
@@ -75,13 +102,32 @@ async def chat(req: ChatRequest, services: Services = Depends(get_services)):
         try:
             yield emit(EventName.TURN_START, TurnStartEvent, mode=mode)
             yield emit(EventName.STATE, StateEvent, value=StateValue.THINKING)
-            # Agent 仍是同步阻塞实现：放到工作线程执行，避免卡住事件循环
+
+            result = None
+            # 图引擎支持逐 token 流式；legacy 引擎 stream_chat 返回 None，退回一次性
+            stream_factory = getattr(services, "stream_chat", None)
             async with services.lock(req.session_id):
-                result = await asyncio.to_thread(
-                    services.chat, req.session_id, req.text, req.mode
+                stream = (
+                    stream_factory(req.session_id, req.text, req.mode)
+                    if callable(stream_factory) else None
                 )
-            yield emit(EventName.STATE, StateEvent, value=StateValue.SPEAKING)
-            yield emit(EventName.TEXT_DELTA, TextDeltaEvent, text=result["reply"])
+                if stream is None:
+                    # Agent 同步阻塞实现：放到工作线程执行，避免卡住事件循环
+                    result = await asyncio.to_thread(
+                        services.chat, req.session_id, req.text, req.mode
+                    )
+                    yield emit(EventName.STATE, StateEvent, value=StateValue.SPEAKING)
+                    yield emit(EventName.TEXT_DELTA, TextDeltaEvent, text=result["reply"])
+                else:
+                    yield emit(EventName.STATE, StateEvent, value=StateValue.SPEAKING)
+                    async for kind, payload in _iterate_sync_generator(stream):
+                        if kind == "delta":
+                            yield emit(EventName.TEXT_DELTA, TextDeltaEvent, text=payload)
+                        elif kind == "done":
+                            result = payload
+                    if result is None:
+                        raise RuntimeError("流式对话未返回最终结果")
+
             yield emit(EventName.TEXT_DONE, TextDoneEvent, text=result["reply"])
             yield emit(EventName.EMOTION, EmotionEvent, name=result["emotion"])
             # 本期在 agent 完成后补发工具事件（不改进 agent 主循环，见执行文档 6.5）

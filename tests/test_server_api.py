@@ -225,6 +225,116 @@ class TestChatStream:
         assert resp.status_code == 400
 
 
+class FakeStreamingServices(FakeServices):
+    """在 FakeServices 基础上提供同步增量生成器，模拟 graph 引擎流式"""
+
+    def __init__(self, deltas=("你", "好呀"), result=None):
+        super().__init__(result=result)
+        self.deltas = tuple(deltas)
+
+    def stream_chat(self, session_id, text, mode=None):
+        self.last_call = (session_id, text, mode)
+
+        def gen():
+            for piece in self.deltas:
+                yield ("delta", piece)
+            yield ("done", self.agent.chat(text))
+
+        return gen()
+
+
+class FakeFailingStreamServices(FakeServices):
+    """流式生成器中途抛异常，用于验证错误事件映射"""
+
+    def __init__(self, exc):
+        super().__init__()
+        self.exc = exc
+
+    def stream_chat(self, session_id, text, mode=None):
+        exc = self.exc
+
+        def gen():
+            yield ("delta", "你")
+            raise exc
+
+        return gen()
+
+
+class FakeNoDoneStreamServices(FakeServices):
+    """流式生成器只产出 delta 就结束（缺 done），验证路由兜底报错"""
+
+    def stream_chat(self, session_id, text, mode=None):
+        def gen():
+            yield ("delta", "你")
+
+        return gen()
+
+
+class TestChatStreamingGraph:
+    """graph 引擎：逐 token 下发 text.delta，legacy 引擎一次性下发"""
+
+    def test_stream_deltas_event_order(self):
+        services = FakeStreamingServices()
+        resp = _request(services, "POST", "/v1/chat", json={"text": "你好"})
+        assert resp.status_code == 200
+
+        events = _parse_sse(resp.text)
+        names = [name for name, _ in events]
+        assert names == [
+            "turn.start",
+            "state",
+            "state",
+            "text.delta",
+            "text.delta",
+            "text.done",
+            "emotion",
+            "turn.end",
+            "state",
+        ]
+        assert [data["text"] for name, data in events if name == "text.delta"] == ["你", "好呀"]
+        payload = dict(events)
+        assert payload["text.done"]["text"] == "你好呀"
+        assert payload["emotion"]["name"] == "happy"
+        assert services.last_call == ("default", "你好", None)
+
+    def test_stream_mode_and_session_passed_through(self):
+        services = FakeStreamingServices()
+        resp = _request(
+            services, "POST", "/v1/chat",
+            json={"session_id": "work", "text": "hi", "mode": "office"},
+        )
+        assert resp.status_code == 200
+        assert services.last_call == ("work", "hi", "office")
+        assert dict(_parse_sse(resp.text))["turn.start"]["mode"] == "office"
+
+    def test_stream_error_maps_to_bad_request(self):
+        resp = _request(
+            FakeFailingStreamServices(ValueError("未知的 agent 模式")),
+            "POST", "/v1/chat", json={"text": "hi"},
+        )
+        events = _parse_sse(resp.text)
+        names = [name for name, _ in events]
+        assert names == ["turn.start", "state", "state", "text.delta", "error", "state"]
+        error = dict(events)["error"]
+        assert error["code"] == "BAD_REQUEST"
+        assert events[-1][1]["value"] == "idle"
+
+    def test_stream_without_done_emits_internal_error(self):
+        resp = _request(
+            FakeNoDoneStreamServices(), "POST", "/v1/chat", json={"text": "hi"},
+        )
+        # 生成器正常结束但没有 done → 路由应报错（不被吞掉）
+        error = dict(_parse_sse(resp.text))["error"]
+        assert error["code"] == "INTERNAL"
+        assert "流式对话未返回最终结果" in error["message"]
+
+    def test_legacy_fallback_emits_single_delta(self):
+        """没有 stream_chat 的 legacy 服务：仍应一次性下发完整回复"""
+        resp = _request(FakeServices(), "POST", "/v1/chat", json={"text": "你好"})
+        deltas = [data["text"] for name, data in _parse_sse(resp.text) if name == "text.delta"]
+        assert deltas == ["你好呀"]
+
+
 class TestAuthAndInterrupt:
     """token 鉴权与打断接口"""
 
