@@ -2,11 +2,32 @@
 import time
 from typing import Any
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
 from agent.chat_agent import TurnResult
 from agent.graph.main_graph import build_main_graph
 from utils.logger_handler import logger
+
+
+def _collect_turn_metrics(new_messages: list[BaseMessage]) -> dict:
+    '''从本轮新增消息中统计模型调用轮数与工具调用记录'''
+    steps = sum(1 for m in new_messages if isinstance(m, AIMessage))
+    tool_messages = {
+        getattr(m, "tool_call_id", None): m for m in new_messages if isinstance(m, ToolMessage)
+    }
+    records = []
+    for message in new_messages:
+        if not isinstance(message, AIMessage):
+            continue
+        for call in getattr(message, "tool_calls", None) or []:
+            tool_message = tool_messages.get(call.get("id"))
+            records.append({
+                "name": call.get("name", ""),
+                "args": call.get("args", {}) or {},
+                "ok": getattr(tool_message, "status", None) != "error",
+                "duration_ms": 0.0,
+            })
+    return {"steps": max(steps, 1), "tool_calls": records}
 
 
 class CompanionGraphAgent:
@@ -40,17 +61,19 @@ class CompanionGraphAgent:
             "game_request": None,
         }
         result = self.graph.invoke(state)
+        new_messages = list(result.get("messages") or [])[len(self.messages):]
         self.messages = list(result.get("messages") or self.messages)
 
         last = self.messages[-1] if self.messages else None
         content = getattr(last, "content", "") if last is not None else ""
         reply = content if isinstance(content, str) else str(content)
+        metrics = _collect_turn_metrics(new_messages)
 
         return {
             "emotion": "neutral",
             "reply": reply,
             "mode": self.mode_config["name"],
-            "steps": 1,
-            "tool_calls": [],
+            "steps": metrics["steps"],
+            "tool_calls": metrics["tool_calls"],
             "latency_ms": round((time.perf_counter() - started_at) * 1000, 2),
         }

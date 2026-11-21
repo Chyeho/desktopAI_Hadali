@@ -1,5 +1,6 @@
 """单元测试：陪伴主图骨架与 runner agent/graph/main_graph.py、runner.py"""
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import tool
 
 from agent.graph.main_graph import build_main_graph, route_after_perception
 from agent.graph.runner import CompanionGraphAgent
@@ -11,10 +12,36 @@ class _FakeLLM:
     def __init__(self, reply: str = "我在呢，想聊什么都可以呀。"):
         self.reply = reply
         self.calls: list[list] = []
+        self.bound_tools: list = []
+
+    def bind_tools(self, tools):
+        self.bound_tools = list(tools)
+        return self
 
     def invoke(self, messages):
         self.calls.append(list(messages))
         return AIMessage(content=self.reply)
+
+
+class _ScriptedLLM:
+    """按脚本依次返回 AIMessage，用于验证工具循环"""
+
+    def __init__(self, responses: list[AIMessage]):
+        self.responses = list(responses)
+        self.calls: list[list] = []
+
+    def bind_tools(self, tools):
+        return self
+
+    def invoke(self, messages):
+        self.calls.append(list(messages))
+        return self.responses.pop(0)
+
+
+@tool
+def _fake_echo(text: str = "") -> str:
+    """测试用本地工具：原样返回文本（不依赖网络）"""
+    return f"echo:{text}"
 
 
 class TestMainGraph:
@@ -54,6 +81,45 @@ class TestMainGraph:
         assert route_after_perception({"route": "game"}) == "game"
 
 
+class TestToolLoop:
+    """agent ⇄ tools 循环"""
+
+    def test_tool_call_executes_and_returns_final_reply(self):
+        llm = _ScriptedLLM([
+            AIMessage(content="", tool_calls=[
+                {"name": "_fake_echo", "args": {"text": "hi"}, "id": "c1"},
+            ]),
+            AIMessage(content="已经帮你确认好啦。"),
+        ])
+        graph = build_main_graph(llm, system_prompt="", tools=[_fake_echo])
+
+        result = graph.invoke({"messages": [HumanMessage(content="帮我确认一下")]})
+
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) == 1
+        assert tool_messages[0].content == "echo:hi"
+        assert result["messages"][-1].content == "已经帮你确认好啦。"
+        assert len(llm.calls) == 2
+
+    def test_tool_error_becomes_tool_message(self):
+        @tool
+        def _boom() -> str:
+            """总是抛异常的工具"""
+            raise RuntimeError("boom")
+
+        llm = _ScriptedLLM([
+            AIMessage(content="", tool_calls=[{"name": "_boom", "args": {}, "id": "c1"}]),
+            AIMessage(content="刚才工具出了点问题，我们换个方式试试。"),
+        ])
+        graph = build_main_graph(llm, system_prompt="", tools=[_boom])
+
+        result = graph.invoke({"messages": [HumanMessage(content="试一下")]})
+
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) == 1
+        assert result["messages"][-1].content == "刚才工具出了点问题，我们换个方式试试。"
+
+
 class TestCompanionGraphAgent:
     """runner 的 TurnResult 契约"""
 
@@ -68,6 +134,22 @@ class TestCompanionGraphAgent:
         assert result["steps"] == 1
         assert result["tool_calls"] == []
         assert result["latency_ms"] >= 0
+
+    def test_tool_turn_metrics(self):
+        llm = _ScriptedLLM([
+            AIMessage(content="", tool_calls=[
+                {"name": "_fake_echo", "args": {"text": "hi"}, "id": "c1"},
+            ]),
+            AIMessage(content="好的。"),
+        ])
+        graph = build_main_graph(llm, system_prompt="", tools=[_fake_echo])
+        agent = CompanionGraphAgent(graph=graph)
+
+        result = agent.chat("试一下工具")
+
+        assert result["steps"] == 2
+        assert result["tool_calls"][0]["name"] == "_fake_echo"
+        assert result["tool_calls"][0]["ok"] is True
 
     def test_multi_turn_keeps_context(self):
         llm = _FakeLLM("记得的。")
