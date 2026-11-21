@@ -102,6 +102,12 @@ class HistoryStore:
         self.messages.append(message)
         self._trim()
 
+    def replace(self, messages: list[BaseMessage]) -> None:
+        '''整体替换历史并裁剪保存（LangGraph 引擎的 JSON 镜像使用）'''
+        self.messages = list(messages)
+        self._trim()
+        self.save()
+
     def _trim(self) -> None:
         '''裁剪历史：始终保留 system 消息，其余只保留最近 HISTORY_WINDOW 条'''
         system_msgs = [m for m in self.messages if isinstance(m, SystemMessage)]

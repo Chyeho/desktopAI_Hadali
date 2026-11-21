@@ -140,6 +140,22 @@ class TestHistoryStoreTrim:
         assert others[-1].content == f"msg-{HISTORY_WINDOW + 1}"
 
 
+class TestHistoryStoreReplace:
+    """HistoryStore.replace：整体替换（图引擎 JSON 镜像）"""
+
+    def test_replace_trims_and_saves(self, tmp_path):
+        f = tmp_path / "history.json"
+        store = HistoryStore(file_path=str(f))
+        messages = [HumanMessage(content=f"m{i}") for i in range(HISTORY_WINDOW + 3)]
+
+        store.replace(messages)
+
+        assert len(store.messages) == HISTORY_WINDOW
+        assert store.messages[-1].content == f"m{HISTORY_WINDOW + 2}"
+        reloaded = HistoryStore(file_path=str(f))
+        assert len(reloaded.messages) == HISTORY_WINDOW
+
+
 class TestHistoryStoreSystemPrompt:
     """HistoryStore.set_system_prompt / clear"""
 

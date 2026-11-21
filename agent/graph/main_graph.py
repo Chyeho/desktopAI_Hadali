@@ -7,6 +7,7 @@ P5 再把 game 路由指向游戏子图。
 '''
 from typing import Any
 
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -24,7 +25,8 @@ def route_after_perception(state: AgentState) -> str:
 
 def build_main_graph(llm: Any, system_prompt: str | None = None,
                      tools: list | None = None,
-                     time_format: str = DEFAULT_TIME_FORMAT):
+                     time_format: str = DEFAULT_TIME_FORMAT,
+                     checkpointer: Any = None):
     '''构建并编译陪伴主图
 
     参数：
@@ -32,6 +34,7 @@ def build_main_graph(llm: Any, system_prompt: str | None = None,
         system_prompt: 可选，覆盖默认提示词文件
         tools        : 可选，覆盖默认 agent_tools（测试注入用）
         time_format  : AI 回复时间后缀格式
+        checkpointer : 检查点存储；默认 MemorySaver，配合 thread_id 维持多轮上下文
     '''
     agent_tools = get_agent_tools() if tools is None else list(tools)
 
@@ -53,4 +56,4 @@ def build_main_graph(llm: Any, system_prompt: str | None = None,
     builder.add_conditional_edges("agent", tools_condition, {"tools": "tools", END: END})
     builder.add_edge("tools", "agent")
 
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer or MemorySaver())

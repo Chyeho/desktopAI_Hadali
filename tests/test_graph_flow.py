@@ -10,6 +10,8 @@ from agent.graph.runner import CompanionGraphAgent
 
 TIME_SUFFIX_RE = re.compile(r" \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]$")
 TIME_PREFIX_RE = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] ")
+# 直接调用编译后的图时需要 thread_id（已挂 MemorySaver）
+CFG = {"configurable": {"thread_id": "test-thread"}}
 
 
 class _FakeLLM:
@@ -69,7 +71,7 @@ class TestMainGraph:
         llm = _FakeLLM()
         graph = build_main_graph(llm, system_prompt="测试提示词")
 
-        result = graph.invoke({"messages": [HumanMessage(content="今天有点累")]})
+        result = graph.invoke({"messages": [HumanMessage(content="今天有点累")]}, CFG)
 
         assert result["route"] == "chat"
         last_content = result["messages"][-1].content
@@ -82,7 +84,7 @@ class TestMainGraph:
         llm = _FakeLLM("游戏功能还在准备中哦。")
         graph = build_main_graph(llm, system_prompt="")
 
-        result = graph.invoke({"messages": [HumanMessage(content="来下盘五子棋")]})
+        result = graph.invoke({"messages": [HumanMessage(content="来下盘五子棋")]}, CFG)
 
         assert result["route"] == "game"
         assert result["game_request"] == "来下盘五子棋"
@@ -92,7 +94,7 @@ class TestMainGraph:
         llm = _FakeLLM()
         graph = build_main_graph(llm, system_prompt="测试提示词")
 
-        result = graph.invoke({"messages": [HumanMessage(content="你好")]})
+        result = graph.invoke({"messages": [HumanMessage(content="你好")]}, CFG)
 
         assert [m.type for m in result["messages"]] == ["human", "ai"]
 
@@ -113,7 +115,7 @@ class TestToolLoop:
         ])
         graph = build_main_graph(llm, system_prompt="", tools=[_fake_echo])
 
-        result = graph.invoke({"messages": [HumanMessage(content="帮我确认一下")]})
+        result = graph.invoke({"messages": [HumanMessage(content="帮我确认一下")]}, CFG)
 
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert len(tool_messages) == 1
@@ -133,7 +135,7 @@ class TestToolLoop:
         ])
         graph = build_main_graph(llm, system_prompt="", tools=[_boom])
 
-        result = graph.invoke({"messages": [HumanMessage(content="试一下")]})
+        result = graph.invoke({"messages": [HumanMessage(content="试一下")]}, CFG)
 
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert len(tool_messages) == 1
@@ -197,6 +199,32 @@ class TestCompanionGraphAgent:
         agent = CompanionGraphAgent(_FakeLLM())
         agent.set_mode("office")
         assert agent.mode_config["name"] == "emotion"
+
+
+class TestHistoryMirror:
+    """JSON 历史镜像与跨实例恢复"""
+
+    def test_restore_from_json(self, tmp_path):
+        history_file = str(tmp_path / "history.json")
+        agent1 = CompanionGraphAgent(_FakeLLM("记住啦。"), history_file=history_file)
+        agent1.chat("我叫小林")
+
+        llm2 = _FakeLLM("你叫小林呀。")
+        agent2 = CompanionGraphAgent(llm2, history_file=history_file)
+        agent2.chat("我叫什么")
+
+        contents = [m.content for m in llm2.calls[0]]
+        assert any("我叫小林" in content for content in contents)
+        assert any("我叫什么" in content for content in contents)
+
+    def test_json_keeps_time_prefix_and_suffix(self, tmp_path):
+        history_file = tmp_path / "history.json"
+        agent = CompanionGraphAgent(_FakeLLM("记住啦。"), history_file=str(history_file))
+        agent.chat("我叫小林")
+
+        raw = history_file.read_text(encoding="utf-8")
+        assert re.search(r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] 我叫小林", raw)
+        assert re.search(r"记住啦。 \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]", raw)
 
 
 class TestStreamChat:
