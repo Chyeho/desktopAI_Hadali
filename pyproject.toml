@@ -23,6 +23,9 @@ dependencies = [
     "uvicorn>=0.54.0",
     "httpx>=0.28.1",
     "httpx-sse>=0.4.3",
+    "langgraph-jev-router==0.2.0",
+    "langchain-mcp-adapters>=0.3.2",
+    "mcp>=1.30.0",
 ]
 
 [dependency-groups]
