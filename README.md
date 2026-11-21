@@ -1,13 +1,15 @@
 # DesktopAI_Hadali
 
-基于 PySide6 + Live2D 的多功能桌面情感陪伴 AI 助手「哈达莉」。AI 助手形象为 Live2D 模型（HiYori），内置 AI 聊天（LangChain 驱动，支持任意 OpenAI 协议大模型）、轻量级工具调用循环、情感标签驱动的表情动画、多 agent 模式扩展通道与可换源的 TTS 语音播报。哈达莉的定位是「伴随在桌面的情感陪伴 AI 助手」——既能自然地陪伴聊天、关心用户日常，也能按需扩展为桌面办公、编程等专用 agent 模式，辅助用户处理实际任务。
+基于 PySide6 + Live2D 的多功能桌面情感陪伴 AI 助手「哈达莉」。AI 助手形象为 Live2D 模型（HiYori），对话引擎以 LangGraph 情感陪伴主图为核心（支持任意 OpenAI 协议大模型），内置感知门控、ReAct 工具循环、情感标签驱动的表情动画、多 agent 模式扩展通道与可换源的 TTS 语音播报。哈达莉的定位是「伴随在桌面的情感陪伴 AI 助手」——既能自然地陪伴聊天、关心用户日常，也能按需扩展为桌面办公、编程等专用 agent 模式，辅助用户处理实际任务。
 
 ## 功能特性
 
 - Live2D 桌宠形象，自动适配窗口大小、随窗口等比缩放
-- 与 AI 角色对话（哈达莉），回复逐字打字机显示
-- AI 具备基础工具调用能力：本机时间 / 天气查询 / 联网搜索
-- 对话历史持久化：关闭程序后 AI 仍记得之前的对话
+- 与 AI 角色对话（哈达莉），回复流式逐 token 显示
+- LangGraph 陪伴主图：感知门控（游戏请求进入占位子图，其余进入陪伴 agent）+ ReAct 工具循环
+- AI 具备基础工具调用能力：天气查询 / 联网搜索；可选接入 MCP 工具（未配置自动降级）
+- 时间感知：用户消息与 AI 回复自动附加时间戳，UI 侧保持干净文本
+- 对话历史持久化：MemorySaver 维持多轮上下文，JSON 镜像保证重启后 AI 仍记得之前的对话
 - 已接入部分表情动画，持续开发中（10 种情感标签 → 6 组 hiyori 自带动作，播完平滑过渡回常态）
 - 多 agent 模式扩展通道（当前为情感陪伴主模式，办公 / 编程等模式预留）
 - 单轮对话框交互：输入 → 思考中 → 回复 → 点击恢复输入
@@ -30,12 +32,15 @@
 - `protocol/`            请求与 SSE 事件模型（client 与 server 共用）
 - `core/`                纯逻辑门面与会话管理（`facade` / `session` / `tracing`）
 - `chatbot.py`           AI 对话兼容适配器（保留模块级 `_agent` 供既有测试使用）
-- `agent/`               AI 对话核心：chat_agent（工具调用循环）/ tool_manager / mode_configs
+- `agent/`               AI 对话核心
+  - `agent/graph/`       LangGraph 陪伴主图（感知门控 / agent ⇄ tools / 游戏占位子图 / 运行时）
+  - `agent/chat_agent.py` legacy 对话引擎（`AGENT_ENGINE=legacy` 时回滚使用）
+  - `agent/tool_manager.py` / `mode_configs/` 工具注册表与模式配置
 - `modelFactory/`        模型工厂（langchain ChatOpenAI，工厂模式）
-- `tools/common/`        公共工具（本机时间 / 天气 / 联网搜索）
-- `utils/`               工具集（配置 / 日志 / 路径 / 提示词加载）
+- `tools/common/`        公共工具（天气 / 联网搜索）
+- `utils/`               工具集（配置 / 日志 / 路径 / 提示词加载 / 时间注入）
 - `prompts/`             系统提示词文本（不硬编码在代码中）
-- `config/`              配置文件（提示词路径等 yaml）
+- `config/`              配置文件（提示词路径 yaml；MCP 示例 `mcp_servers.example.json`）
 - `bench/`               批量评测脚本与固定 prompt（见 `docs/项目技术文档.md`）
 - `docs/`                文档：项目技术文档、前后端接口 JSON 契约、开发文档
 - `expression_tester.py` Live2D 表情动画调试台（独立运行，见 `docs/项目技术文档.md`）
@@ -80,8 +85,10 @@ DASHSCOPE_VOICE=音色ID
 说明：
 
 - `API_KEY` / `BASE_URL` / `MODEL` 为必填项，默认 DeepSeek，也可换任意 OpenAI 协议端。
+- 对话引擎默认使用 LangGraph 陪伴主图；如需回滚到旧引擎，设置 `AGENT_ENGINE=legacy`。
 - `TTS_MODE=demo` 时优先 qwen3-tts（需 `DASHSCOPE_API_KEY`），失败自动兜底 edge-tts；`dev` 模式只用 edge-tts（免费、零配置）。
 - 需要给本机接口加校验时，额外设置环境变量 `HADALI_TOKEN`；未配置时接口仅建议本机调试使用。
+- 可选 MCP 工具：把 `config/mcp_servers.example.json` 复制为 `config/mcp_servers.json` 并填入服务；未配置或加载失败时自动降级，不影响启动。也可用 `MCP_CONFIG_PATH` 指向其他配置文件。
 
 ### 2. 运行方式
 
