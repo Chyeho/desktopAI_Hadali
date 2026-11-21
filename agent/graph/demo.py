@@ -41,9 +41,17 @@ def main() -> None:
             break
 
         print("哈达莉：", end="", flush=True)
+        has_delta = False
+        result = None
         for kind, payload in agent.stream_chat(user_input):
             if kind == "delta":
+                has_delta = True
                 print(payload, end="", flush=True)
+            elif kind == "done":
+                result = payload
+        # 游戏占位子图等场景没有逐 token 流，退回一次性打印干净正文
+        if not has_delta and result is not None:
+            print(result["reply"], end="", flush=True)
         print()
 
 

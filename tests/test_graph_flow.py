@@ -79,16 +79,18 @@ class TestMainGraph:
         assert TIME_SUFFIX_RE.search(last_content)
         assert [m.content for m in llm.calls[0]][0] == "测试提示词"
 
-    def test_game_request_still_answered_in_p1(self):
-        """P1 游戏子图未接入，game 路由暂时由 agent 回复"""
-        llm = _FakeLLM("游戏功能还在准备中哦。")
+    def test_game_request_enters_game_subgraph(self):
+        """游戏请求进入 game_subgraph，由占位节点给出陪伴式回应"""
+        llm = _FakeLLM("[emotion:thinking]\n游戏还在准备中哦，先陪你聊聊天吧。")
         graph = build_main_graph(llm, system_prompt="")
 
         result = graph.invoke({"messages": [HumanMessage(content="来下盘五子棋")]}, CFG)
 
         assert result["route"] == "game"
         assert result["game_request"] == "来下盘五子棋"
-        assert result["messages"][-1].content.startswith("游戏功能还在准备中哦。")
+        last = result["messages"][-1]
+        assert last.content.startswith("游戏还在准备中哦，先陪你聊聊天吧。")
+        assert last.additional_kwargs["emotion"] == "thinking"
 
     def test_system_prompt_not_written_to_state(self):
         llm = _FakeLLM()
@@ -97,6 +99,19 @@ class TestMainGraph:
         result = graph.invoke({"messages": [HumanMessage(content="你好")]}, CFG)
 
         assert [m.type for m in result["messages"]] == ["human", "ai"]
+
+    def test_plain_chat_not_routed_to_game(self):
+        llm = _FakeLLM("[emotion:relaxed]\n那就先聊聊今天吧。")
+        graph = build_main_graph(llm, system_prompt="陪伴提示词")
+
+        result = graph.invoke({"messages": [HumanMessage(content="今天有点累")]}, CFG)
+
+        assert result["route"] == "chat"
+        assert result["game_request"] is None
+        assert result["messages"][-1].additional_kwargs["emotion"] == "relaxed"
+        # 普通聊天应使用陪伴提示词，而不是游戏占位提示词
+        system_prompt = [m for m in llm.calls[0] if m.type == "system"][0].content
+        assert system_prompt == "陪伴提示词"
 
     def test_route_after_perception_defaults_to_chat(self):
         assert route_after_perception({}) == "chat"
@@ -241,6 +256,17 @@ class TestStreamChat:
         assert all("[" not in delta for delta in deltas)
         assert done["emotion"] == "happy"
         assert done["reply"] == "今天也要开心呀"
+        assert TIME_SUFFIX_RE.search(agent.messages[-1].content)
+
+    def test_game_route_turn_result(self):
+        """游戏占位子图：TurnResult 情绪与正文均正确（子图回复走一次性下发的降级路径）"""
+        llm = _FakeLLM("[emotion:thinking]\n游戏还没做好，先陪你聊聊吧")
+        agent = CompanionGraphAgent(llm, system_prompt="")
+
+        result = agent.chat("来下盘五子棋")
+
+        assert result["emotion"] == "thinking"
+        assert result["reply"] == "游戏还没做好，先陪你聊聊吧"
         assert TIME_SUFFIX_RE.search(agent.messages[-1].content)
 
     def test_stream_without_tag(self):

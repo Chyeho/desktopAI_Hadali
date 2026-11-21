@@ -23,6 +23,9 @@ from agent.graph.main_graph import build_main_graph
 from utils.logger_handler import logger
 from utils.time_utils import DEFAULT_TIME_FORMAT, strip_reply_time, with_user_time
 
+# 允许把 token 转发到 UI 的节点（agent 与游戏占位节点）
+STREAM_FORWARD_NODES = {"agent", "game_notice"}
+
 
 def _collect_turn_metrics(new_messages: list[BaseMessage]) -> dict:
     '''从本轮新增消息中统计模型调用轮数与工具调用记录'''
@@ -163,8 +166,8 @@ class CompanionGraphAgent:
         ):
             if mode == "messages":
                 chunk, metadata = payload
-                # 只转发 agent 节点的模型 token，避免把系统提示词等内部消息暴露给 UI
-                if metadata.get("langgraph_node") != "agent":
+                # 只转发面向用户的节点 token，避免把系统提示词等内部消息暴露给 UI
+                if metadata.get("langgraph_node") not in STREAM_FORWARD_NODES:
                     continue
                 content = chunk.content if isinstance(chunk.content, str) else ""
                 delta = filter_.feed(content)

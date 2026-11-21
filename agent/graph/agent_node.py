@@ -52,6 +52,43 @@ def _merge_chunks(chunks: list[AIMessageChunk]) -> AIMessageChunk:
     return merged
 
 
+def invoke_llm(llm: Any, messages: list[BaseMessage]) -> Any:
+    '''优先使用 stream 聚合（兼容 LangGraph messages 流式模式），失败回落 invoke'''
+    stream = getattr(llm, "stream", None)
+    if callable(stream):
+        try:
+            chunks = list(stream(messages))
+        except Exception as e:
+            logger.warning(f"[graph.llm]流式调用失败，回落 invoke：{str(e)}")
+        else:
+            if chunks:
+                return _merge_chunks(chunks)
+    return llm.invoke(messages)
+
+
+def to_ai_message(message: Any) -> AIMessage:
+    '''把聚合后的 AIMessageChunk 归一化为 AIMessage'''
+    if not isinstance(message, AIMessageChunk):
+        return message
+    return AIMessage(
+        content=message.content,
+        tool_calls=message.tool_calls or [],
+        additional_kwargs=dict(message.additional_kwargs),
+        id=message.id,
+    )
+
+
+def finalize_reply(message: AIMessage, time_format: str = DEFAULT_TIME_FORMAT) -> AIMessage:
+    '''解析情绪标签、追加时间后缀，返回最终回复消息'''
+    content = message.content if isinstance(message.content, str) else str(message.content)
+    emotion, clean_reply = parse_emotion_tag(content)
+    return AIMessage(
+        content=with_reply_time(clean_reply, fmt=time_format),
+        additional_kwargs={**dict(message.additional_kwargs), "emotion": emotion},
+        id=message.id,
+    )
+
+
 class AgentNode:
     '''陪伴 agent 节点：注入系统提示词、绑定工具并调用模型'''
 
@@ -63,19 +100,6 @@ class AgentNode:
         self.tools = get_agent_tools() if tools is None else list(tools)
         self.time_format = time_format
 
-    def _invoke(self, llm: Any, messages: list[BaseMessage]) -> Any:
-        '''优先使用 stream 聚合（兼容 LangGraph messages 流式模式），失败回落 invoke'''
-        stream = getattr(llm, "stream", None)
-        if callable(stream):
-            try:
-                chunks = list(stream(messages))
-            except Exception as e:
-                logger.warning(f"[graph.agent]流式调用失败，回落 invoke：{str(e)}")
-            else:
-                if chunks:
-                    return _merge_chunks(chunks)
-        return llm.invoke(messages)
-
     def __call__(self, state: AgentState) -> dict:
         messages: list[BaseMessage] = list(state.get("messages") or [])
         if self.system_prompt:
@@ -84,15 +108,7 @@ class AgentNode:
 
         tools = select_tools_for(_last_user_text(messages), self.tools)
         llm_with_tools = self.llm.bind_tools(tools) if tools else self.llm
-        ai_message = self._invoke(llm_with_tools, messages)
-
-        if isinstance(ai_message, AIMessageChunk):
-            ai_message = AIMessage(
-                content=ai_message.content,
-                tool_calls=ai_message.tool_calls or [],
-                additional_kwargs=dict(ai_message.additional_kwargs),
-                id=ai_message.id,
-            )
+        ai_message = to_ai_message(invoke_llm(llm_with_tools, messages))
 
         tool_calls = getattr(ai_message, "tool_calls", None)
         if tool_calls:
@@ -100,12 +116,5 @@ class AgentNode:
             logger.info(f"[graph.agent]请求工具：{[c.get('name') for c in tool_calls]}")
             return {"messages": [ai_message]}
 
-        content = ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
-        emotion, clean_reply = parse_emotion_tag(content)
-        final = AIMessage(
-            content=with_reply_time(clean_reply, fmt=self.time_format),
-            additional_kwargs={**dict(ai_message.additional_kwargs), "emotion": emotion},
-            id=ai_message.id,
-        )
-        logger.info(f"[graph.agent]最终回复，情绪：{emotion}，工具：{[t.name for t in tools]}")
-        return {"messages": [final]}
+        logger.info(f"[graph.agent]最终回复，工具：{[t.name for t in tools]}")
+        return {"messages": [finalize_reply(ai_message, self.time_format)]}
