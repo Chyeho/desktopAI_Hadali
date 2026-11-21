@@ -6,12 +6,11 @@
 注意：FakeJev 关键词单命中置信度为 0.70 + 抖动，恰好 0.70 时不满足 > 0.7，
 因此游戏关键词刻意保留包含关系（如「五子棋」与「棋」），让常见说法至少命中 2 个。
 '''
-import re
-
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from agent.graph.state import AgentState
 from utils.logger_handler import logger
+from utils.time_utils import strip_user_time
 
 # 游戏路由阈值：严格大于 0.7 才进入游戏子图
 GAME_CONFIDENCE_THRESHOLD = 0.7
@@ -34,9 +33,6 @@ GAME_KEYWORDS = (
     "棋",
     "game",
 )
-
-# 用户消息可能带有 agent 注入的时间前缀（[YYYY-MM-DD HH:MM]），判断意图前先剥离
-_TIME_PREFIX_RE = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*")
 
 _backend = None
 
@@ -97,12 +93,12 @@ def decide_route(text: str) -> tuple[str, float]:
 
 
 def _last_user_text(state: AgentState) -> str:
-    '''取最近一条用户消息文本（去掉时间前缀），没有则回退最后一条消息'''
+    '''取最近一条用户消息文本（剥离 agent 注入的时间前缀），没有则回退最后一条消息'''
     messages: list[BaseMessage] = list(state.get("messages") or [])
     for message in reversed(messages):
         if isinstance(message, HumanMessage):
             content = message.content if isinstance(message.content, str) else str(message.content)
-            return _TIME_PREFIX_RE.sub("", content)
+            return strip_user_time(content)
     if messages:
         content = messages[-1].content
         return content if isinstance(content, str) else str(content)

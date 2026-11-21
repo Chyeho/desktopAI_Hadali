@@ -3,10 +3,10 @@
 - tools/common/ 下的公共工具在此注册，所有 agent 模式均可通过白名单调用；
 - 后续各模式独有工具（如 tools/office/）也在全量注册表中登记，
   由各模式配置的 allowed_tools 白名单决定是否可用。
+- 时间能力已迁至 utils/time_utils.py，不再作为 agent 工具注册。
 '''
 from langchain_core.tools import BaseTool
 
-from tools.common.get_time import get_current_time
 from tools.common.weather import get_weather
 from tools.common.web_search import web_search
 from utils.logger_handler import logger
@@ -14,7 +14,6 @@ from utils.logger_handler import logger
 # 全量工具注册表：工具名（@tool 函数名）→ langchain BaseTool
 # 后续新增工具时在此登记即可
 ALL_TOOLS: dict[str, BaseTool] = {
-    get_current_time.name: get_current_time,
     get_weather.name: get_weather,
     web_search.name: web_search,
 }

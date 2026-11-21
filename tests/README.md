@@ -55,7 +55,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 | `test_tool_manager.py` | `agent/tool_manager.py` | 10 | 全量工具注册表、白名单过滤、未注册工具忽略 |
 | `test_mode_configs.py` | `agent/mode_configs/` | 15 | `MODE_REGISTRY` 结构、emotion/office 模式配置字段完整性、默认模式 |
 | `test_chat_agent.py` | `agent/chat_agent.py` | 38 | `HistoryStore`（加载/保存/裁剪/system prompt/异常容错）、`parse_reply_json`（JSON / markdown 代码块 / 夹带文字 / 空值 / 非法 JSON 回退）、`ChatAgent.set_mode`（mock 工厂）、`ChatAgent.chat`（工具调用循环 / 未知工具 / 最大轮数） |
-| `test_get_time.py` | `tools/common/get_time.py` | 10 | 中文星期映射、`get_current_time` 工具输出格式与日期正确性 |
+| `test_time_utils.py` | `utils/time_utils.py` | 13 | `now_str` / `with_user_time` / `with_reply_time` / `strip_user_time` / `strip_reply_time` 与幂等性 |
 | `test_weather.py` | `tools/common/weather.py` | 17 | 天气/风向中文映射、`get_weather` mock 网络请求的成功/回退/异常分支 |
 | `test_web_search.py` | `tools/common/web_search.py` | 13 | `_strip_tags`（去标签 / 反转义实体）、`web_search` mock Bing 搜索的成功/无结果/异常分支 |
 | `test_chatbot.py` | `chatbot.py` | 15 | `_load_env`（注释/空行/引号/缺失）、`init_api_key` / `init_api_key_from_env`（mock 工厂）、`chat_with_model` / `switch_mode`（mock agent） |

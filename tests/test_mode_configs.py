@@ -34,7 +34,11 @@ class TestEmotionModeConfig:
         assert self.cfg["system_prompt_path"] == "prompts/system_prompt.txt"
 
     def test_allowed_tools(self):
-        assert self.cfg["allowed_tools"] == ["get_current_time", "get_weather", "web_search"]
+        assert self.cfg["allowed_tools"] == ["get_weather", "web_search"]
+
+    def test_time_tool_not_allowed(self):
+        """时间能力已迁至 utils/time_utils.py，不再出现在白名单"""
+        assert "get_current_time" not in self.cfg["allowed_tools"]
 
     def test_model_params(self):
         params = self.cfg["model_params"]

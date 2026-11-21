@@ -17,6 +17,7 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langchain_core.tools import tool
 
 from agent.chat_agent import (
     HISTORY_WINDOW,
@@ -274,6 +275,23 @@ class _FakeFactory:
         return llm
 
 
+@tool
+def _fake_echo(text: str = "") -> str:
+    """测试用本地工具：原样返回文本（不依赖网络）"""
+    return f"echo:{text}"
+
+
+class _StubToolManager:
+    """工具管理器桩：返回本地假工具，避免真实天气/搜索请求
+
+    时间工具已迁至 utils/time_utils.py，legacy 模式不再提供本地时间工具，
+    因此工具循环测试改用离线假工具。
+    """
+
+    def get_tools(self, allowed_tools):
+        return [_fake_echo]
+
+
 @pytest.fixture
 def patched_history(tmp_path, monkeypatch):
     """将 HistoryStore 默认路径重定向到临时文件，隔离真实 chat_history/default.json
@@ -357,14 +375,14 @@ class TestChatAgentChat:
 
     def test_tool_call_loop(self, patched_history):
         """模型先调用工具再回复"""
-        agent = ChatAgent(model_factory=_FakeFactory())
+        agent = ChatAgent(model_factory=_FakeFactory(), tool_manager=_StubToolManager())
 
-        # 第一次：请求调用 get_current_time 工具
+        # 第一次：请求调用本地假工具
         # 第二次：给出最终回复
         agent.llm_with_tools.invoke = MagicMock(side_effect=[
             AIMessage(
                 content="",
-                tool_calls=[{"name": "get_current_time", "args": {}, "id": "tc1"}],
+                tool_calls=[{"name": "_fake_echo", "args": {"text": "hi"}, "id": "tc1"}],
             ),
             AIMessage(content='{"emotion": "neutral", "reply": "现在是下午"}'),
         ])
@@ -374,6 +392,7 @@ class TestChatAgentChat:
         # 工具结果应回填到历史
         tool_msgs = [m for m in agent.history.messages if isinstance(m, ToolMessage)]
         assert len(tool_msgs) == 1
+        assert tool_msgs[0].content == "echo:hi"
 
     def test_unknown_tool_returns_error_message(self, patched_history):
         """模型请求调用未授权工具时回填错误信息"""
@@ -392,12 +411,12 @@ class TestChatAgentChat:
 
     def test_max_tool_steps_reached(self, patched_history):
         """工具调用达到上限时强制结束"""
-        agent = ChatAgent(model_factory=_FakeFactory())
+        agent = ChatAgent(model_factory=_FakeFactory(), tool_manager=_StubToolManager())
         # 每次都请求调用工具，永不给出最终回复
         agent.llm_with_tools.invoke = MagicMock(
             return_value=AIMessage(
                 content="",
-                tool_calls=[{"name": "get_current_time", "args": {}, "id": "tc1"}],
+                tool_calls=[{"name": "_fake_echo", "args": {}, "id": "tc1"}],
             )
         )
         result = agent.chat("无限循环")

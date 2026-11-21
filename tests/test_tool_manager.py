@@ -9,13 +9,16 @@ class TestAllTools:
     """ALL_TOOLS：全量工具注册表"""
 
     def test_registered_tools(self):
-        """应注册三个公共工具"""
-        assert "get_current_time" in ALL_TOOLS
+        """应注册天气与搜索两个公共工具"""
         assert "get_weather" in ALL_TOOLS
         assert "web_search" in ALL_TOOLS
 
+    def test_time_tool_removed(self):
+        """时间能力已迁至 utils/time_utils.py，不再作为工具注册"""
+        assert "get_current_time" not in ALL_TOOLS
+
     def test_tool_count(self):
-        assert len(ALL_TOOLS) == 3
+        assert len(ALL_TOOLS) == 2
 
 
 class TestToolManagerGetTools:
@@ -25,13 +28,13 @@ class TestToolManagerGetTools:
         self.tm = ToolManager()
 
     def test_returns_all_whitelisted(self):
-        tools = self.tm.get_tools(["get_current_time", "get_weather", "web_search"])
-        assert len(tools) == 3
+        tools = self.tm.get_tools(["get_weather", "web_search"])
+        assert len(tools) == 2
 
     def test_partial_whitelist(self):
-        tools = self.tm.get_tools(["get_current_time"])
+        tools = self.tm.get_tools(["get_weather"])
         assert len(tools) == 1
-        assert tools[0].name == "get_current_time"
+        assert tools[0].name == "get_weather"
 
     def test_empty_whitelist(self):
         tools = self.tm.get_tools([])
@@ -39,9 +42,9 @@ class TestToolManagerGetTools:
 
     def test_unknown_tool_ignored(self):
         """白名单中未注册的工具应被忽略，不抛异常"""
-        tools = self.tm.get_tools(["get_current_time", "nonexistent_tool"])
+        tools = self.tm.get_tools(["get_weather", "nonexistent_tool"])
         assert len(tools) == 1
-        assert tools[0].name == "get_current_time"
+        assert tools[0].name == "get_weather"
 
     def test_all_unknown_returns_empty(self):
         tools = self.tm.get_tools(["foo", "bar"])
@@ -55,10 +58,10 @@ class TestToolManagerGetToolMap:
         self.tm = ToolManager()
 
     def test_returns_dict(self):
-        tool_map = self.tm.get_tool_map(["get_current_time", "get_weather"])
+        tool_map = self.tm.get_tool_map(["get_weather", "web_search"])
         assert isinstance(tool_map, dict)
-        assert "get_current_time" in tool_map
         assert "get_weather" in tool_map
+        assert "web_search" in tool_map
 
     def test_keys_match_whitelist(self):
         tool_map = self.tm.get_tool_map(["web_search"])
