@@ -33,8 +33,10 @@ OFFICE_KEYWORDS = ("文档", "表格", "excel", "word", "ppt", "文件", "整理
 # MCP 配置：环境变量可覆盖默认路径；真实配置不入库，示例见 config/mcp_servers.example.json
 MCP_CONFIG_ENV = "MCP_CONFIG_PATH"
 DEFAULT_MCP_CONFIG_PATH = "config/mcp_servers.json"
-MCP_LOAD_TIMEOUT = 10.0
+MCP_LOAD_TIMEOUT = 30.0
 MCP_TOOL_TIMEOUT = 30.0
+# 单个 MCP 服务加载超时可用环境变量覆盖（npx 首次冷启动可能较慢）
+MCP_TIMEOUT_ENV = "MCP_LOAD_TIMEOUT"
 
 _agent_tools: list[BaseTool] | None = None
 
@@ -99,10 +101,61 @@ def _to_sync_tool(tool: BaseTool, timeout: float = MCP_TOOL_TIMEOUT) -> BaseTool
     )
 
 
+def _describe_error(exc: BaseException, depth: int = 0) -> list[str]:
+    '''展开 ExceptionGroup / __cause__，输出可定位的失败原因链'''
+    indent = "  " * depth
+    lines = [f"{indent}{type(exc).__name__}: {exc}"]
+    if depth >= 3:
+        return lines
+    sub_exceptions = getattr(exc, "exceptions", None)
+    if sub_exceptions:
+        for sub in sub_exceptions:
+            lines.extend(_describe_error(sub, depth + 1))
+        return lines
+    cause = exc.__cause__ or exc.__context__
+    if cause is not None and cause is not exc:
+        lines.extend(_describe_error(cause, depth + 1))
+    return lines
+
+
+def _resolve_load_timeout(timeout: float = None) -> float:
+    '''单服务加载超时：显式参数 > MCP_LOAD_TIMEOUT 环境变量 > 默认值'''
+    if timeout is not None:
+        return float(timeout)
+    raw = os.getenv(MCP_TIMEOUT_ENV)
+    if not raw:
+        return MCP_LOAD_TIMEOUT
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning(f"[graph.tooling]{MCP_TIMEOUT_ENV}={raw!r} 不是数字，使用默认 {MCP_LOAD_TIMEOUT}s")
+        return MCP_LOAD_TIMEOUT
+
+
+async def _load_each_server(client, names: list[str], timeout: float) -> list[BaseTool]:
+    '''逐个服务加载工具：单个服务失败/超时不影响其他服务'''
+
+    async def load_one(name: str) -> list[BaseTool]:
+        try:
+            tools = await asyncio.wait_for(
+                client.get_tools(server_name=name), timeout
+            )
+        except Exception as e:
+            detail = "\n".join(_describe_error(e))
+            logger.warning(f"[graph.tooling]MCP 服务 {name} 加载失败，已跳过：\n{detail}")
+            return []
+        logger.info(f"[graph.tooling]MCP 服务 {name} 工具：{[t.name for t in tools]}")
+        return list(tools)
+
+    groups = await asyncio.gather(*(load_one(name) for name in names))
+    return [tool for group in groups for tool in group]
+
+
 def load_mcp_tools(config_path: str = None, timeout: float = None) -> list[BaseTool]:
     '''加载 MCP 工具（可选能力）
 
-    任何失败都只告警并返回空列表，保证未配置 MCP 时正常启动。
+    按服务逐个连接，任何单个服务失败/超时都只告警并跳过，不影响其他服务，
+    也不会阻断对话启动。
     '''
     if MultiServerMCPClient is None:
         logger.warning("[graph.tooling]未安装 langchain-mcp-adapters，跳过 MCP 工具")
@@ -122,13 +175,21 @@ def load_mcp_tools(config_path: str = None, timeout: float = None) -> list[BaseT
         logger.warning(f"[graph.tooling]MCP 配置为空（{path}），跳过")
         return []
 
+    server_timeout = _resolve_load_timeout(timeout)
     try:
         client = MultiServerMCPClient(connections, tool_name_prefix=True)
-        tools = _run_coro(client.get_tools, timeout or MCP_LOAD_TIMEOUT)
+        tools = _run_coro(
+            lambda: _load_each_server(client, list(connections), server_timeout),
+            server_timeout + 5,
+        )
     except Exception as e:
-        logger.warning(f"[graph.tooling]MCP 工具加载失败：{str(e)}，已跳过")
+        detail = "\n".join(_describe_error(e))
+        logger.warning(f"[graph.tooling]MCP 工具加载失败，已跳过：\n{detail}")
         return []
 
+    if not tools:
+        logger.warning(f"[graph.tooling]没有可用的 MCP 工具（{len(connections)} 个服务均未就绪）")
+        return []
     logger.info(f"[graph.tooling]MCP 工具：{[t.name for t in tools]}")
     return [_to_sync_tool(t) for t in tools]
 

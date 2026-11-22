@@ -187,6 +187,7 @@
 | FIX-2 | 对话中时间字符串泄漏到 UI（流式增量未按最终文本校正），且提示词加载路径散落在 `agent/graph/agent_node.py`、`.env` 解析在 `facade` 与 `client/voice/tts.py` 各写一份 | ① `utils/time_utils.py` 新增 `strip_time_markers()`，清除任意位置的方括号时间；`finalize_reply` 先清再追加后缀，`_build_result` 统一输出干净 reply；`text.done` 时用最终文本覆盖流式展示。② 提示词统一走 `utils/prompt_loader.py`：新增 `load_prompt_by_config(key)` / `load_graph_prompt()`，路径由 `config/prompts_config.yml` 的 `graph_system_prompt_path` 提供，删除 `agent_node` 里的本地实现。③ `.env` 解析上移到 `utils/env_utils.py`，`core/facade` 与 `client/voice/tts` 复用 | 时间戳不再出现在回复/历史正文（仅保留系统后缀）；提示词与 env 加载只有一处实现。新增 14 条用例，全量 357 passed |
 | FIX-3 | 前端窗口与 Live2D 先显示、后端仍在启动，用户快速输入时会长时间等待 | `client/main.py` 改为“先启后端、再显示窗口”：新增 `wait_for_backend()`，用 `QEventLoop` 等待 `ServerLauncher.ready/failed`（上限 `READY_TIMEOUT + 5s`），就绪后才创建并 `show()` 主窗口；失败时仍显示窗口并展示错误，同时回收 launcher | 冷启动期间用户无法提前对话；等待时长仅发生在窗口出现前。GUI 启动路径无自动化测试，随手工验收 |
 | FIX-4 | 配置 MCP 后仍无法调用工具：适配器返回的工具只支持 `ainvoke`，主图同步执行时 ToolNode 走 `invoke`，结果变成 `NotImplementedError('StructuredTool does not support sync invocation.')` 的 ToolMessage | ① `tooling._to_sync_tool()` 把 async-only 工具包装成同步 `StructuredTool`（内部 `_run_coro` 独立线程 `asyncio.run(tool.ainvoke)`，超时 30s）；② MCP 配置读取改用 `utf-8-sig`，兼容 PowerShell/记事本 BOM；③ 示例配置的 HTTP 传输改为合法的 `streamable_http`。用本地最小 stdio MCP 服务（`add` 工具）跑通完整主图：ToolMessage 返回 `5` | MCP 工具可被同步主图调用；新增 2 条用例，全量 359 passed |
+| FIX-5 | 用户配置 6 个 npx MCP 服务后仍无工具：日志只有 `MCP 调用超时（10.0s）` 或 `unhandled errors in a TaskGroup`。根因是 `MultiServerMCPClient.get_tools()` 全量加载全有或全无——任一服务包名错误（`@modelcontextprotocol/server-fetch`、`@modelcontextprotocol/server-git`、`dokumen-pintar` 在 npm 均 404）或单服务冷启动超过 10s，整批工具都被丢弃，且原日志未展开子异常 | ① `_load_each_server()` 改为按 `server_name` 并发逐个加载，单服务失败/超时只跳过自身；② 默认单服务超时 10s → 30s，支持 `MCP_LOAD_TIMEOUT` 环境变量覆盖；③ `_describe_error()` 递归展开 ExceptionGroup / `__cause__`，日志可看到真实原因；④ 全部失败时明确提示“没有可用的 MCP 工具” | 坏服务不再拖垮好服务；日志可定位具体 npm 404 / 超时；新增 3 条用例，全量 362 passed |
 
 ---
 
@@ -208,6 +209,7 @@
 | FIX-2 | `fix(graph): 修复时间戳泄漏并统一提示词与 env 加载` | 已执行 |
 | FIX-3 | `feat(client): 后端就绪后再显示主窗口` | 已执行 |
 | FIX-4 | `fix(mcp): 支持同步主图调用 MCP 工具` | 已执行 |
+| FIX-5 | `fix(mcp): 逐服务加载并隔离单个服务失败` | 已执行 |
 
 ---
 

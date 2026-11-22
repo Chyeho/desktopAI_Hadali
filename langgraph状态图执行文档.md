@@ -496,6 +496,8 @@ P2-A 阶段总结（2026-11-21）：新增 `utils/time_utils.py`（`now_str` / `
 
 **MCP 可调用修复（2026-11-22）**：MCP 适配器工具是 async-only，同步主图经 ToolNode 调用会得到 `StructuredTool does not support sync invocation`。`tooling._to_sync_tool()` 将其包装为同步工具；配置读取兼容 UTF-8 BOM；示例传输名修正为 `streamable_http`。已用本地 stdio MCP 服务跑通完整主图，新增 2 条用例，全量 359 passed。
 
+**MCP 加载隔离（2026-11-22）**：多服务配置下 `get_tools()` 是全有或全无，任一服务包名错误或冷启动超时都会导致全部工具被丢弃（日志仅显示 `TaskGroup` / 超时）。改为按 `server_name` 逐个并发加载、单服务隔离失败，默认单服务超时提升到 30s（`MCP_LOAD_TIMEOUT` 可覆盖），并展开 ExceptionGroup 打印真实原因。新增 3 条用例，全量 362 passed。
+
 ---
 
 ## 4. 验收核对表（对应提示词 8 条）

@@ -100,7 +100,7 @@ class _FakeMCPClient:
         self.kwargs = kwargs
         self.instances.append(self)
 
-    async def get_tools(self):
+    async def get_tools(self, server_name=None):
         return [_fake_mcp]
 
 
@@ -152,7 +152,7 @@ class TestMcpTools:
             def __init__(self, connections, **kwargs):
                 pass
 
-            async def get_tools(self):
+            async def get_tools(self, server_name=None):
                 return [_fake_time]
 
         monkeypatch.setenv(tooling.MCP_CONFIG_ENV, path)
@@ -194,7 +194,7 @@ class TestMcpTools:
             def __init__(self, connections, **kwargs):
                 pass
 
-            async def get_tools(self):
+            async def get_tools(self, server_name=None):
                 return [_async_mcp_add]
 
         monkeypatch.setattr(tooling, "MultiServerMCPClient", _AsyncClient)
@@ -202,6 +202,38 @@ class TestMcpTools:
 
         assert [t.name for t in tools] == ["mcp_async_add"]
         assert tools[0].invoke({"a": 2, "b": 3}) == "5"
+
+    def test_partial_failure_keeps_healthy_servers(self, monkeypatch, tmp_path):
+        """单个服务失败不影响其他服务（回归：TaskGroup 导致全量失败）"""
+        path = _write_config(tmp_path, {"mcpServers": {
+            "ok": {"transport": "stdio"},
+            "bad": {"transport": "stdio"},
+        }})
+
+        class _MixedClient:
+            def __init__(self, connections, **kwargs):
+                pass
+
+            async def get_tools(self, server_name=None):
+                if server_name == "bad":
+                    raise RuntimeError("spawn npx failed")
+                return [_fake_mcp]
+
+        monkeypatch.setattr(tooling, "MultiServerMCPClient", _MixedClient)
+        tools = load_mcp_tools(path)
+
+        assert [t.name for t in tools] == ["mcp_calc"]
+
+    def test_describe_error_unwraps_exception_group(self):
+        group = BaseExceptionGroup("boom", [RuntimeError("inner")])
+        text = "\n".join(tooling._describe_error(group))
+        assert "RuntimeError: inner" in text
+
+    def test_timeout_env_override(self, monkeypatch):
+        monkeypatch.setenv(tooling.MCP_TIMEOUT_ENV, "12.5")
+        assert tooling._resolve_load_timeout() == 12.5
+        monkeypatch.setenv(tooling.MCP_TIMEOUT_ENV, "abc")
+        assert tooling._resolve_load_timeout() == tooling.MCP_LOAD_TIMEOUT
 
     def test_config_path_env_override(self, monkeypatch, tmp_path):
         target = tmp_path / "custom.json"
