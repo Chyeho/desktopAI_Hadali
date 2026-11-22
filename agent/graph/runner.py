@@ -21,7 +21,11 @@ from agent.chat_agent import HistoryStore, TurnResult
 from agent.graph.emotion import EmotionStreamFilter, parse_emotion_tag
 from agent.graph.main_graph import build_main_graph
 from utils.logger_handler import logger
-from utils.time_utils import DEFAULT_TIME_FORMAT, strip_reply_time, with_user_time
+from utils.time_utils import (
+    DEFAULT_TIME_FORMAT,
+    strip_time_markers,
+    with_user_time,
+)
 
 # 允许把 token 转发到 UI 的节点（agent 与游戏占位节点）
 STREAM_FORWARD_NODES = {"agent", "game_notice"}
@@ -134,7 +138,7 @@ class CompanionGraphAgent:
 
     def _build_result(self, messages: list[BaseMessage], new_messages: list[BaseMessage],
                       started_at: float) -> TurnResult:
-        '''把图执行结果转换为 TurnResult（reply 剥离时间后缀）'''
+        '''把图执行结果转换为 TurnResult（reply 剥离所有时间标记）'''
         last = messages[-1] if messages else None
         content = getattr(last, "content", "") if last is not None else ""
         content = content if isinstance(content, str) else str(content)
@@ -145,7 +149,7 @@ class CompanionGraphAgent:
 
         return {
             "emotion": emotion,
-            "reply": strip_reply_time(content),
+            "reply": strip_time_markers(content),
             "mode": self.mode_config["name"],
             "steps": metrics["steps"],
             "tool_calls": metrics["tool_calls"],

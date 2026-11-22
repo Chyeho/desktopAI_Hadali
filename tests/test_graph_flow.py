@@ -216,6 +216,19 @@ class TestCompanionGraphAgent:
         agent.set_mode("office")
         assert agent.mode_config["name"] == "emotion"
 
+    def test_reply_echoed_timestamp_is_removed(self):
+        """模型自行复述时间戳时：reply 与历史正文都不应残留（只保留系统后缀）"""
+        llm = _FakeLLM("现在是 [2026-11-21 14:30]，该吃饭啦。")
+        agent = CompanionGraphAgent(llm)
+
+        result = agent.chat("几点了")
+
+        assert result["reply"] == "现在是，该吃饭啦。"
+        stored = agent.messages[-1].content
+        assert "现在是，该吃饭啦。" in stored
+        assert len(re.findall(r"\[\d{4}-\d{2}-\d{2}", stored)) == 1
+        assert TIME_SUFFIX_RE.search(stored)
+
 
 class TestHistoryMirror:
     """JSON 历史镜像与跨实例恢复"""

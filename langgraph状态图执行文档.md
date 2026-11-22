@@ -490,6 +490,8 @@ P2-A 阶段总结（2026-11-21）：新增 `utils/time_utils.py`（`now_str` / `
 
 **上线后修复（2026-11-22）**：第二次启动报 `Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`。原因是 JSON 历史镜像保存了工具调用中间消息，裁剪/恢复后出现孤立 `ToolMessage`。`runner._clean_history()` 在恢复与写镜像前剥离 `ToolMessage` 与带 `tool_calls` 的 `AIMessage`，`HistoryStore` 通用行为不变；新增 2 条回归用例，全量 343 passed。
 
+**上线后修复（2026-11-22，第二批）**：① 对话中时间字符串泄漏——`strip_time_markers()` 清除模型复述的任意位置时间标记，`text.done` 用最终干净文本覆盖流式展示；② 提示词加载统一到 `utils/prompt_loader.py`，路径由 `config/prompts_config.yml` 的 `graph_system_prompt_path` 提供，删除 `agent_node.py` 本地实现；③ `.env` 解析上移到 `utils/env_utils.py`，facade 与 TTS 复用。新增 14 条用例，全量 357 passed。
+
 ---
 
 ## 4. 验收核对表（对应提示词 8 条）

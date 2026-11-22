@@ -139,7 +139,8 @@ class ImageWindow(QWidget):
                 else:
                     self.chat_box.finish_ai_reply()
             else:
-                self.chat_box.finish_ai_reply()
+                # 用最终干净文本校正流式展示，避免模型复述的时间戳残留
+                self.chat_box.finish_ai_reply(payload.get("text") or None)
         elif name == "emotion":
             drive_expression(payload.get("name", ""), live2d_widget=self.live2d_widget)
         elif name == "turn.end":

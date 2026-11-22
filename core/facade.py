@@ -15,6 +15,7 @@ from agent.graph.runner import CompanionGraphAgent
 from agent.mode_configs import DEFAULT_MODE, MODE_REGISTRY
 from agent.tool_manager import ToolManager
 from modelFactory.factory import ChatModelFactory
+from utils.env_utils import load_env
 from utils.path_tool import get_abs_path
 
 DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
@@ -30,19 +31,6 @@ def resolve_engine(engine: str = None) -> str:
     if name not in VALID_ENGINES:
         raise ValueError(f"未知的 AGENT_ENGINE：{name}，可选：{list(VALID_ENGINES)}")
     return name
-
-
-def load_env(env_path: str) -> dict:
-    """轻量解析 .env（key=value，跳过注释/空行），避免额外引入 python-dotenv"""
-    env = {}
-    with open(env_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            env[key.strip()] = value.strip().strip('"').strip("'")
-    return env
 
 
 def create_agent(api_key: str,

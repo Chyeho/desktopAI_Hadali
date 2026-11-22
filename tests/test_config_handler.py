@@ -21,6 +21,10 @@ class TestLoadPromptsConfig:
         """默认配置的 system_prompt_path 指向 prompts/system_prompt.txt"""
         assert prompts_conf["system_prompt_path"] == "prompts/system_prompt.txt"
 
+    def test_graph_prompt_path(self):
+        """默认配置的 graph_system_prompt_path 指向陪伴主图提示词"""
+        assert prompts_conf["graph_system_prompt_path"] == "prompts/graph_companion_prompt.txt"
+
     def test_load_with_custom_path(self, tmp_path):
         """传入自定义 yaml 文件路径"""
         cfg = tmp_path / "custom.yml"

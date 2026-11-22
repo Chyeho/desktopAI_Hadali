@@ -8,6 +8,7 @@ from utils.time_utils import (
     DEFAULT_TIME_FORMAT,
     now_str,
     strip_reply_time,
+    strip_time_markers,
     strip_user_time,
     with_reply_time,
     with_user_time,
@@ -73,3 +74,23 @@ class TestReplyTime:
 
     def test_empty_reply(self):
         assert strip_reply_time("") == ""
+
+
+class TestStripTimeMarkers:
+    """strip_time_markers：清除任意位置的时间标记（模型复述兜底）"""
+
+    def test_strip_trailing_marker(self):
+        assert strip_time_markers("我在呢 [2026-11-21 14:30]") == "我在呢"
+
+    def test_strip_inner_marker(self):
+        assert strip_time_markers("现在是 [2026-11-21 14:30]，该吃饭啦。") == "现在是，该吃饭啦。"
+
+    def test_strip_multiple_markers(self):
+        text = "[2026-11-21 14:30] 早上好 [2026-11-21 14:31] 今天也要开心"
+        assert strip_time_markers(text) == "早上好 今天也要开心"
+
+    def test_keep_non_time_brackets(self):
+        assert strip_time_markers("[emotion:happy] 好呀") == "[emotion:happy] 好呀"
+
+    def test_empty_text(self):
+        assert strip_time_markers("") == ""

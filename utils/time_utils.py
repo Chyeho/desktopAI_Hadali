@@ -14,6 +14,8 @@ DEFAULT_TIME_FORMAT = "%Y-%m-%d %H:%M"
 _USER_PREFIX_RE = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*")
 # AI 消息后缀：回复正文 [2026-11-21 14:31]
 _REPLY_SUFFIX_RE = re.compile(r"\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*$")
+# 任意位置的方括号时间标记（模型可能复述），连前导空白一起删除
+_TIME_MARKER_RE = re.compile(r"\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]")
 
 
 def now_str(dt: datetime | None = None, fmt: str = DEFAULT_TIME_FORMAT) -> str:
@@ -29,6 +31,12 @@ def strip_user_time(text: str) -> str:
 def strip_reply_time(text: str) -> str:
     '''去掉 AI 消息末尾的时间后缀；无后缀时原样返回'''
     return _REPLY_SUFFIX_RE.sub("", text or "").rstrip()
+
+
+def strip_time_markers(text: str) -> str:
+    '''去掉文本中所有方括号时间标记（含模型自行复述的），用于展示与持久化'''
+    cleaned = _TIME_MARKER_RE.sub("", text or "")
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
 
 
 def with_user_time(text: str, dt: datetime | None = None,

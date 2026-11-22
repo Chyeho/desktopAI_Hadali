@@ -1,10 +1,15 @@
 """单元测试：提示词加载 utils/prompt_loader.py
 
-覆盖 load_prompt / load_system_prompt 的文件读取与异常处理。
+覆盖 load_prompt / load_prompt_by_config / load_system_prompt / load_graph_prompt。
 """
 import pytest
 
-from utils.prompt_loader import load_prompt, load_system_prompt
+from utils.prompt_loader import (
+    load_graph_prompt,
+    load_prompt,
+    load_prompt_by_config,
+    load_system_prompt,
+)
 
 
 class TestLoadPrompt:
@@ -44,3 +49,21 @@ class TestLoadSystemPrompt:
         content = load_system_prompt()
         assert isinstance(content, str)
         assert len(content) > 0
+
+
+class TestLoadGraphPrompt:
+    """load_graph_prompt：按 yaml 配置加载陪伴主图提示词"""
+
+    def test_load_graph_prompt(self):
+        content = load_graph_prompt()
+        assert isinstance(content, str)
+        assert "哈达莉" in content
+        assert "[emotion:" in content
+
+
+class TestLoadPromptByConfig:
+    """load_prompt_by_config：统一配置键入口"""
+
+    def test_missing_key_raises(self):
+        with pytest.raises(KeyError):
+            load_prompt_by_config("__not_exist_key__")

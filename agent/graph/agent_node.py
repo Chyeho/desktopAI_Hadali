@@ -19,20 +19,13 @@ from agent.graph.emotion import parse_emotion_tag
 from agent.graph.state import AgentState
 from agent.graph.tooling import get_agent_tools, select_tools_for
 from utils.logger_handler import logger
-from utils.prompt_loader import load_prompt
-from utils.time_utils import DEFAULT_TIME_FORMAT, strip_user_time, with_reply_time
-
-# 陪伴主图专用提示词（与 legacy 的严格 JSON 提示词区分）
-GRAPH_PROMPT_PATH = "prompts/graph_companion_prompt.txt"
-
-
-def load_graph_prompt(path: str = GRAPH_PROMPT_PATH) -> str:
-    '''加载陪伴主图提示词；失败时返回空串，不阻断对话'''
-    try:
-        return load_prompt(path)
-    except Exception as e:
-        logger.warning(f"[graph.agent]系统提示词加载失败（{path}）：{str(e)}")
-        return ""
+from utils.prompt_loader import load_graph_prompt
+from utils.time_utils import (
+    DEFAULT_TIME_FORMAT,
+    strip_time_markers,
+    strip_user_time,
+    with_reply_time,
+)
 
 
 def _last_user_text(messages: list[BaseMessage]) -> str:
@@ -79,11 +72,11 @@ def to_ai_message(message: Any) -> AIMessage:
 
 
 def finalize_reply(message: AIMessage, time_format: str = DEFAULT_TIME_FORMAT) -> AIMessage:
-    '''解析情绪标签、追加时间后缀，返回最终回复消息'''
+    '''解析情绪标签、清理时间标记并追加时间后缀，返回最终回复消息'''
     content = message.content if isinstance(message.content, str) else str(message.content)
     emotion, clean_reply = parse_emotion_tag(content)
     return AIMessage(
-        content=with_reply_time(clean_reply, fmt=time_format),
+        content=with_reply_time(strip_time_markers(clean_reply), fmt=time_format),
         additional_kwargs={**dict(message.additional_kwargs), "emotion": emotion},
         id=message.id,
     )
@@ -96,7 +89,14 @@ class AgentNode:
                  tools: list | None = None,
                  time_format: str = DEFAULT_TIME_FORMAT):
         self.llm = llm
-        self.system_prompt = load_graph_prompt() if system_prompt is None else system_prompt
+        if system_prompt is None:
+            try:
+                system_prompt = load_graph_prompt()
+            except Exception as e:
+                # 提示词缺失不阻断对话，保持与旧行为一致
+                logger.warning(f"[graph.agent]系统提示词加载失败：{str(e)}")
+                system_prompt = ""
+        self.system_prompt = system_prompt
         self.tools = get_agent_tools() if tools is None else list(tools)
         self.time_format = time_format
 
