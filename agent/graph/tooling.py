@@ -140,6 +140,12 @@ async def _load_each_server(client, names: list[str], timeout: float) -> list[Ba
             tools = await asyncio.wait_for(
                 client.get_tools(server_name=name), timeout
             )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"[graph.tooling]MCP 服务 {name} 在 {timeout:.0f}s 内未就绪，已跳过"
+                f"（npx/uvx 首次安装依赖可能较慢，可调大 MCP_LOAD_TIMEOUT）"
+            )
+            return []
         except Exception as e:
             detail = "\n".join(_describe_error(e))
             logger.warning(f"[graph.tooling]MCP 服务 {name} 加载失败，已跳过：\n{detail}")

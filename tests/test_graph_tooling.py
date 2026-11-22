@@ -1,4 +1,5 @@
 """单元测试：图引擎工具装配 agent/graph/tooling.py"""
+import asyncio
 import json
 
 import pytest
@@ -234,6 +235,27 @@ class TestMcpTools:
         assert tooling._resolve_load_timeout() == 12.5
         monkeypatch.setenv(tooling.MCP_TIMEOUT_ENV, "abc")
         assert tooling._resolve_load_timeout() == tooling.MCP_LOAD_TIMEOUT
+
+    def test_slow_server_times_out_without_failing_others(self, monkeypatch, tmp_path):
+        """服务超时只跳过自身，其他服务仍可用"""
+        path = _write_config(tmp_path, {"mcpServers": {
+            "fast": {"transport": "stdio"},
+            "slow": {"transport": "stdio"},
+        }})
+
+        class _SlowClient:
+            def __init__(self, connections, **kwargs):
+                pass
+
+            async def get_tools(self, server_name=None):
+                if server_name == "slow":
+                    await asyncio.sleep(5)
+                return [_fake_mcp]
+
+        monkeypatch.setattr(tooling, "MultiServerMCPClient", _SlowClient)
+        tools = load_mcp_tools(path, timeout=0.05)
+
+        assert [t.name for t in tools] == ["mcp_calc"]
 
     def test_config_path_env_override(self, monkeypatch, tmp_path):
         target = tmp_path / "custom.json"

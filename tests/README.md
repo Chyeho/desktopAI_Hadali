@@ -43,7 +43,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 
 ## 测试文件清单
 
-共 **26 个测试文件、362 条用例**，覆盖纯逻辑模块与 LangGraph 陪伴主图。
+共 **26 个测试文件、363 条用例**，覆盖纯逻辑模块与 LangGraph 陪伴主图。
 
 | 测试文件 | 被测模块 | 用例数 | 覆盖要点 |
 | --- | --- | ---: | --- |
@@ -61,7 +61,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 | `test_graph_state.py` | `agent/graph/state.py` | 3 | `AgentState` 字段与 `add_messages` 归并 |
 | `test_graph_perception.py` | `agent/graph/perception.py` | 10 | FakeJev 路由、0.7 阈值边界、关键词兜底、时间前缀剥离 |
 | `test_graph_emotion.py` | `agent/graph/emotion.py` | 13 | 情绪标签解析、跨 token 过滤、非法标签回退 |
-| `test_graph_tooling.py` | `agent/graph/tooling.py` | 22 | 工具装配、时间工具剔除、MCP 配置读取（含 BOM）/逐服务加载/单服务失败隔离/超时覆盖、异步工具同步包装 |
+| `test_graph_tooling.py` | `agent/graph/tooling.py` | 23 | 工具装配、时间工具剔除、MCP 配置读取（含 BOM）/逐服务加载/单服务失败与超时隔离/超时覆盖、异步工具同步包装 |
 | `test_graph_flow.py` | `agent/graph/` | 20 | 主图 chat/game 分支、工具循环、流式 token、多轮与 JSON 镜像、时间注入与时间戳清除、工具中间消息剥离 |
 | `test_weather.py` | `tools/common/weather.py` | 17 | 天气/风向中文映射、`get_weather` mock 网络请求的成功/回退/异常分支 |
 | `test_web_search.py` | `tools/common/web_search.py` | 13 | `_strip_tags`、`web_search` mock Bing 搜索的成功/无结果/异常分支 |
@@ -105,7 +105,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 ## 测试结果
 
 ```
-362 passed in 26.07s
+363 passed in 26.07s
 ```
 
 环境：Windows + Python 3.13 + uv 管理依赖。
@@ -115,7 +115,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 platform win32 -- Python 3.13.x, pytest-9.x, pluggy-1.x
 rootdir: .../desktopAI_Hadali
 configfile: pyproject.toml: [tool.pytest.ini_options]
-collected 362 items
+collected 363 items
 
 tests/test_chat_agent.py ....................................... [11%]
 tests/test_chatbot.py ...............                              [16%]
@@ -128,7 +128,7 @@ tests/test_graph_emotion.py .............                          [31%]
 tests/test_graph_flow.py ....................                      [36%]
 tests/test_graph_perception.py ..........                          [39%]
 tests/test_graph_state.py ...                                      [40%]
-tests/test_graph_tooling.py ......................                 [45%]
+tests/test_graph_tooling.py .......................                [45%]
 tests/test_logger_handler.py ......                                [47%]
 tests/test_mode_configs.py ................                        [51%]
 tests/test_path_tool.py .......                                    [53%]
@@ -144,7 +144,7 @@ tests/test_tts.py .....................                            [91%]
 tests/test_weather.py .................                            [96%]
 tests/test_web_search.py .............                             [100%]
 
-======================= 362 passed in 26.07s =======================
+======================= 363 passed in 26.07s =======================
 ```
 
 ## 新增测试指引

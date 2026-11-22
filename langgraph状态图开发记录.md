@@ -188,6 +188,7 @@
 | FIX-3 | 前端窗口与 Live2D 先显示、后端仍在启动，用户快速输入时会长时间等待 | `client/main.py` 改为“先启后端、再显示窗口”：新增 `wait_for_backend()`，用 `QEventLoop` 等待 `ServerLauncher.ready/failed`（上限 `READY_TIMEOUT + 5s`），就绪后才创建并 `show()` 主窗口；失败时仍显示窗口并展示错误，同时回收 launcher | 冷启动期间用户无法提前对话；等待时长仅发生在窗口出现前。GUI 启动路径无自动化测试，随手工验收 |
 | FIX-4 | 配置 MCP 后仍无法调用工具：适配器返回的工具只支持 `ainvoke`，主图同步执行时 ToolNode 走 `invoke`，结果变成 `NotImplementedError('StructuredTool does not support sync invocation.')` 的 ToolMessage | ① `tooling._to_sync_tool()` 把 async-only 工具包装成同步 `StructuredTool`（内部 `_run_coro` 独立线程 `asyncio.run(tool.ainvoke)`，超时 30s）；② MCP 配置读取改用 `utf-8-sig`，兼容 PowerShell/记事本 BOM；③ 示例配置的 HTTP 传输改为合法的 `streamable_http`。用本地最小 stdio MCP 服务（`add` 工具）跑通完整主图：ToolMessage 返回 `5` | MCP 工具可被同步主图调用；新增 2 条用例，全量 359 passed |
 | FIX-5 | 用户配置 6 个 npx MCP 服务后仍无工具：日志只有 `MCP 调用超时（10.0s）` 或 `unhandled errors in a TaskGroup`。根因是 `MultiServerMCPClient.get_tools()` 全量加载全有或全无——任一服务包名错误（`@modelcontextprotocol/server-fetch`、`@modelcontextprotocol/server-git`、`dokumen-pintar` 在 npm 均 404）或单服务冷启动超过 10s，整批工具都被丢弃，且原日志未展开子异常 | ① `_load_each_server()` 改为按 `server_name` 并发逐个加载，单服务失败/超时只跳过自身；② 默认单服务超时 10s → 30s，支持 `MCP_LOAD_TIMEOUT` 环境变量覆盖；③ `_describe_error()` 递归展开 ExceptionGroup / `__cause__`，日志可看到真实原因；④ 全部失败时明确提示“没有可用的 MCP 工具” | 坏服务不再拖垮好服务；日志可定位具体 npm 404 / 超时；新增 3 条用例，全量 362 passed |
+| FIX-6 | 修正包名后仍有 4 个服务超时：`fetch`（uvx）与 `dokumen_pintar`（uvx）首次安装依赖耗时超过 30s；`duckduckgo_search` 的 npm 包依赖 Bun 且本机 `D:\js\node_cache\_cacache\tmp` 对当前用户不可写（EPERM），官方二进制启动即退出；`git` 服务启动后报 `D:\soft\ai_workspace is not a valid Git repository` 并关闭连接 | 逐个实测定位：① `uvx duckduckgo-mcp-server` 可正常返回 `ddg_search` 等 3 个工具；② `uvx mcp-server-git --repository <真实仓库>` 可正常返回 git 工具；③ fetch/dokumen 属于首次依赖下载慢，可 `uv tool install` 预热或调大 `MCP_LOAD_TIMEOUT`；④ 代码层补充超时专用日志（提示调大 `MCP_LOAD_TIMEOUT`），README 记录 npm 缓存权限 / Bun 依赖 / git 仓库路径等坑 | 已确认可用替代服务与根因；新增 1 条超时隔离用例，全量 363 passed |
 
 ---
 
@@ -210,6 +211,7 @@
 | FIX-3 | `feat(client): 后端就绪后再显示主窗口` | 已执行 |
 | FIX-4 | `fix(mcp): 支持同步主图调用 MCP 工具` | 已执行 |
 | FIX-5 | `fix(mcp): 逐服务加载并隔离单个服务失败` | 已执行 |
+| FIX-6 | `fix(mcp): 优化超时日志并记录常见接入问题` | 已执行 |
 
 ---
 

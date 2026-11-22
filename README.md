@@ -114,7 +114,11 @@ DASHSCOPE_VOICE=音色ID
   说明：
 
   - 多个服务是**逐个独立加载**的，某个服务包名错误 / 启动失败 / 超时只会跳过该服务并在日志打印原因链，不影响其他服务
-  - 单个服务默认超时 30 秒，可用环境变量 `MCP_LOAD_TIMEOUT=60` 调整（npx 首次冷启动会下载包，可能较慢）
+  - 单个服务默认超时 30 秒，可用环境变量 `MCP_LOAD_TIMEOUT=60` 调整（npx/uvx 首次冷启动会下载依赖，可能较慢）
+  - `uvx` 服务首次启动会安装依赖（如 `mcp-server-fetch`、`dokumen-pintar` 依赖较多）；可先在终端 `uv tool install <包名>` 预热，或临时调大 `MCP_LOAD_TIMEOUT`
+  - Windows 下 `npx` 若报 `EPERM ... _cacache\tmp`，是 npm 缓存目录不可写；可在该服务配置里加 `"env": {"npm_config_cache": "D:\\可写目录"}` 后重试
+  - 部分 npm 包（如 `duckduckgo-mcp`）依赖 Bun，未安装 Bun 会报 `'"bun"' is not recognized`；建议改用 `uvx duckduckgo-mcp-server`
+  - `mcp-server-git` 的 `--repository` 必须指向**已存在的 Git 仓库**，否则服务会因 “not a valid Git repository” 退出
   - 未配置/配置损坏也会告警并跳过，不影响聊天
   - 真实配置含密钥，已加入 `.gitignore`
 

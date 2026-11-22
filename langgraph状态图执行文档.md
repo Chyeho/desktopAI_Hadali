@@ -498,6 +498,8 @@ P2-A 阶段总结（2026-11-21）：新增 `utils/time_utils.py`（`now_str` / `
 
 **MCP 加载隔离（2026-11-22）**：多服务配置下 `get_tools()` 是全有或全无，任一服务包名错误或冷启动超时都会导致全部工具被丢弃（日志仅显示 `TaskGroup` / 超时）。改为按 `server_name` 逐个并发加载、单服务隔离失败，默认单服务超时提升到 30s（`MCP_LOAD_TIMEOUT` 可覆盖），并展开 ExceptionGroup 打印真实原因。新增 3 条用例，全量 362 passed。
 
+**MCP 接入问题定位（2026-11-22）**：`fetch` / `dokumen_pintar` 因 uvx 首次安装依赖超过 30s 超时；`duckduckgo-mcp` 依赖 Bun 且本机 npm 缓存目录不可写；`git` 的 `--repository` 指向了非 Git 仓库。已实测 `uvx duckduckgo-mcp-server` 与「有效仓库 + `uvx mcp-server-git`」可用；超时日志增加 `MCP_LOAD_TIMEOUT` 提示，README 记录常见坑。新增 1 条用例，全量 363 passed。
+
 ---
 
 ## 4. 验收核对表（对应提示词 8 条）
