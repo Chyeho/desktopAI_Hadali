@@ -90,6 +90,29 @@ DASHSCOPE_VOICE=音色ID
 - 需要给本机接口加校验时，额外设置环境变量 `HADALI_TOKEN`；未配置时接口仅建议本机调试使用。
 - 可选 MCP 工具：把 `config/mcp_servers.example.json` 复制为 `config/mcp_servers.json` 并填入服务；未配置或加载失败时自动降级，不影响启动。也可用 `MCP_CONFIG_PATH` 指向其他配置文件。
 
+  接入步骤（以本地 stdio 服务为例）：
+
+  1. 复制配置：`copy config\mcp_servers.example.json config\mcp_servers.json`
+  2. 按服务文档填写 `mcpServers`（支持 `stdio` / `sse` / `streamable_http`）：
+
+     ```json
+     {
+       "mcpServers": {
+         "time": {
+           "transport": "stdio",
+           "command": "uvx",
+           "args": ["mcp-server-time", "--local-timezone=Asia/Shanghai"]
+         }
+       }
+     }
+     ```
+
+  3. 重启后端（客户端退出重开即可；配置只在构建 agent 工具时读取并缓存）
+  4. 验证日志出现 `[graph.tooling]MCP 工具：['time_get_current_time']`；工具名会带服务名前缀
+  5. 对话中直接描述任务即可，或点名“用 time 工具查一下现在几点”
+
+  未配置/配置损坏/连接失败/10 秒超时都只会告警并跳过 MCP；真实配置含密钥，已加入 `.gitignore`。
+
 ### 2. 运行方式
 
 项目为**前后端分离**架构：

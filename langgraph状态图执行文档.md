@@ -494,6 +494,8 @@ P2-A 阶段总结（2026-11-21）：新增 `utils/time_utils.py`（`now_str` / `
 
 **启动顺序调整（2026-11-22）**：`client/main.py` 改为先启动并等待后端就绪（`wait_for_backend()` + `QEventLoop`），再创建/显示主窗口；后端失败时仍显示窗口并提示错误，避免“窗口先出现、用户提前对话、等待后端拉起”的体验问题。
 
+**MCP 可调用修复（2026-11-22）**：MCP 适配器工具是 async-only，同步主图经 ToolNode 调用会得到 `StructuredTool does not support sync invocation`。`tooling._to_sync_tool()` 将其包装为同步工具；配置读取兼容 UTF-8 BOM；示例传输名修正为 `streamable_http`。已用本地 stdio MCP 服务跑通完整主图，新增 2 条用例，全量 359 passed。
+
 ---
 
 ## 4. 验收核对表（对应提示词 8 条）

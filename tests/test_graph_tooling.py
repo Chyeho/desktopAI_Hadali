@@ -44,6 +44,12 @@ def _fake_mcp() -> str:
     return "ok"
 
 
+@tool("mcp_async_add")
+async def _async_mcp_add(a: int, b: int) -> str:
+    """异步 MCP 工具，用于验证同步包装"""
+    return str(a + b)
+
+
 class TestAgentTools:
     """默认工具列表"""
 
@@ -170,6 +176,32 @@ class TestMcpTools:
     def test_read_connections_accepts_plain_dict(self, tmp_path):
         path = _write_config(tmp_path, {"calc": {"transport": "stdio"}})
         assert _read_mcp_connections(path) == {"calc": {"transport": "stdio"}}
+
+    def test_read_connections_supports_bom(self, tmp_path):
+        """PowerShell / 记事本保存的 UTF-8 BOM 配置也能读取"""
+        path = tmp_path / "bom.json"
+        path.write_text(
+            json.dumps({"mcpServers": {"calc": {"transport": "stdio"}}}),
+            encoding="utf-8-sig",
+        )
+        assert _read_mcp_connections(str(path)) == {"calc": {"transport": "stdio"}}
+
+    def test_async_mcp_tool_is_sync_callable(self, monkeypatch, tmp_path):
+        """MCP 适配器返回 async-only 工具，加载后必须能被同步 ToolNode 调用"""
+        path = _write_config(tmp_path, {"mcpServers": {"demo": {"transport": "stdio"}}})
+
+        class _AsyncClient:
+            def __init__(self, connections, **kwargs):
+                pass
+
+            async def get_tools(self):
+                return [_async_mcp_add]
+
+        monkeypatch.setattr(tooling, "MultiServerMCPClient", _AsyncClient)
+        tools = load_mcp_tools(path)
+
+        assert [t.name for t in tools] == ["mcp_async_add"]
+        assert tools[0].invoke({"a": 2, "b": 3}) == "5"
 
     def test_config_path_env_override(self, monkeypatch, tmp_path):
         target = tmp_path / "custom.json"

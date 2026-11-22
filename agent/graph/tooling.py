@@ -10,7 +10,7 @@ import os
 import threading
 from typing import Any
 
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, StructuredTool
 
 from agent.tool_manager import ToolManager
 from utils.logger_handler import logger
@@ -34,6 +34,7 @@ OFFICE_KEYWORDS = ("文档", "表格", "excel", "word", "ppt", "文件", "整理
 MCP_CONFIG_ENV = "MCP_CONFIG_PATH"
 DEFAULT_MCP_CONFIG_PATH = "config/mcp_servers.json"
 MCP_LOAD_TIMEOUT = 10.0
+MCP_TOOL_TIMEOUT = 30.0
 
 _agent_tools: list[BaseTool] | None = None
 
@@ -46,7 +47,8 @@ def mcp_config_path() -> str:
 
 def _read_mcp_connections(path: str) -> dict:
     '''解析 MCP 配置：兼容 {"mcpServers": {...}} 与直接 connections 两种写法'''
-    with open(path, "r", encoding="utf-8") as f:
+    # utf-8-sig：兼容 Windows PowerShell/记事本保存的带 BOM 文件
+    with open(path, "r", encoding="utf-8-sig") as f:
         config = json.load(f)
     if not isinstance(config, dict):
         raise ValueError("根节点必须是 JSON 对象")
@@ -56,8 +58,8 @@ def _read_mcp_connections(path: str) -> dict:
     return connections
 
 
-def _run_coro(coro_factory, timeout: float) -> list[BaseTool]:
-    '''在独立线程跑异步加载：避免调用方已有事件循环时 asyncio.run 报错'''
+def _run_coro(coro_factory, timeout: float) -> Any:
+    '''在独立线程跑异步调用：避免调用方已有事件循环时 asyncio.run 报错'''
     box: dict[str, Any] = {}
 
     def worker():
@@ -66,14 +68,35 @@ def _run_coro(coro_factory, timeout: float) -> list[BaseTool]:
         except BaseException as exc:  # 异常需回传调用线程
             box["error"] = exc
 
-    thread = threading.Thread(target=worker, name="mcp-load", daemon=True)
+    thread = threading.Thread(target=worker, name="mcp-io", daemon=True)
     thread.start()
     thread.join(timeout)
     if thread.is_alive():
-        raise TimeoutError(f"MCP 工具加载超时（{timeout}s）")
+        raise TimeoutError(f"MCP 调用超时（{timeout}s）")
     if "error" in box:
         raise box["error"]
-    return box.get("result") or []
+    return box.get("result")
+
+
+def _to_sync_tool(tool: BaseTool, timeout: float = MCP_TOOL_TIMEOUT) -> BaseTool:
+    '''把异步-only 的 MCP 工具包装成同步工具
+
+    主图当前以同步方式执行（`graph.invoke` / `graph.stream`），ToolNode 会走
+    `tool.invoke`；而 MCP 适配器生成的是仅支持 `ainvoke` 的 StructuredTool，
+    直接调用会得到 "StructuredTool does not support sync invocation"。
+    '''
+    if getattr(tool, "coroutine", None) is None:
+        return tool
+
+    def _call(**kwargs):
+        return _run_coro(lambda: tool.ainvoke(kwargs), timeout)
+
+    return StructuredTool.from_function(
+        func=_call,
+        name=tool.name,
+        description=tool.description or tool.name,
+        args_schema=tool.args_schema,
+    )
 
 
 def load_mcp_tools(config_path: str = None, timeout: float = None) -> list[BaseTool]:
@@ -107,7 +130,7 @@ def load_mcp_tools(config_path: str = None, timeout: float = None) -> list[BaseT
         return []
 
     logger.info(f"[graph.tooling]MCP 工具：{[t.name for t in tools]}")
-    return list(tools)
+    return [_to_sync_tool(t) for t in tools]
 
 
 def _sanitize_tools(tools: list[BaseTool]) -> list[BaseTool]:

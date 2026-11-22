@@ -5,8 +5,8 @@
       "command": "python",
       "args": ["path/to/your_mcp_server.py"]
     },
-    "example_http": {
-      "transport": "http",
+    "example_streamable_http": {
+      "transport": "streamable_http",
       "url": "http://localhost:8000/mcp",
       "headers": {
         "Authorization": "Bearer <your-token>"
