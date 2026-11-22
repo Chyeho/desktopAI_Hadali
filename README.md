@@ -1,159 +1,184 @@
 # DesktopAI_Hadali
 
-基于 PySide6 + Live2D 的多功能桌面情感陪伴 AI 助手「哈达莉」。AI 助手形象为 Live2D 模型（HiYori），对话引擎以 LangGraph 情感陪伴主图为核心（支持任意 OpenAI 协议大模型），内置感知门控、ReAct 工具循环、情感标签驱动的表情动画、多 agent 模式扩展通道与可换源的 TTS 语音播报。哈达莉的定位是「伴随在桌面的情感陪伴 AI 助手」——既能自然地陪伴聊天、关心用户日常，也能按需扩展为桌面办公、编程等专用 agent 模式，辅助用户处理实际任务。
+基于 PySide6 + Live2D 的桌面情感陪伴 AI 助手「哈达莉」。形象为 Live2D 模型（HiYori），对话引擎以 LangGraph 情感陪伴主图为核心（兼容任意 OpenAI 协议大模型），具备感知门控、ReAct 工具循环、情感标签驱动的表情动画、可换源 TTS 语音播报与可选 MCP 工具扩展。哈达莉既陪伴聊天、关心日常，也可按需扩展为办公、编程等专用 agent 模式。
 
 ## 功能特性
 
-- Live2D 桌宠形象，自动适配窗口大小、随窗口等比缩放
-- 与 AI 角色对话（哈达莉），回复流式逐 token 显示
+- Live2D 桌宠形象，随窗口等比缩放
+- 流式对话：回复逐 token 显示，支持思考中打断
 - LangGraph 陪伴主图：感知门控（游戏请求进入占位子图，其余进入陪伴 agent）+ ReAct 工具循环
-- AI 具备基础工具调用能力：天气查询 / 联网搜索；可选接入 MCP 工具（未配置自动降级）
-- 时间感知：用户消息与 AI 回复自动附加时间戳，UI 侧保持干净文本
-- 对话历史持久化：MemorySaver 维持多轮上下文，JSON 镜像保证重启后 AI 仍记得之前的对话
-- 已接入部分表情动画，持续开发中（10 种情感标签 → 6 组 hiyori 自带动作，播完平滑过渡回常态）
-- 多 agent 模式扩展通道（当前为情感陪伴主模式，办公 / 编程等模式预留）
-- 单轮对话框交互：输入 → 思考中 → 回复 → 点击恢复输入
-- 半透明聊天框，支持拖拽窗口、滚轮缩放
-- 右键菜单：最小化到托盘 / 退出程序
+- 内置工具：天气查询 / 联网搜索；可选接入 MCP 工具（未配置自动降级）
+- 时间感知：消息自动附加时间戳，UI 展示保持干净文本
+- 对话历史持久化：MemorySaver 维持多轮上下文，JSON 镜像保证重启后仍记得之前的对话
+- 情感动画：10 种情感标签映射到 6 组 HiYori 动作，播完平滑回到常态
+- 多 agent 模式扩展通道（当前为情感陪伴主模式，办公 / 编程等预留）
+- 半透明聊天框，支持拖拽窗口、滚轮缩放；右键菜单可最小化到托盘或退出
 
-> Live2D 形象来源于 Live2D 官方提供的免费模型（HiYori），仅用于学习与演示用途。
+> Live2D 形象来源于 Live2D 官方免费模型（HiYori），仅用于学习与演示。
 
 ## 项目结构
 
 - `main.py`              程序入口（`client.main` 的 shim，保持 `python main.py` 可用）
 - `client/`              客户端（UI 进程）
-  - `client/main.py`     客户端入口：OpenGL 初始化 → 拉起/复用后端 → 显示窗口
+  - `client/main.py`     客户端入口：初始化 OpenGL → 启动后端并等待就绪 → 显示窗口
   - `client/ui/`         ChatBox（三态聊天框）/ Live2DWidget（渲染与表情）/ ImageWindow（主窗口）
   - `client/transport/`  Transport 接口 + SseWorker(QThread) + SSE 事件解析
   - `client/voice/tts.py` 语音合成（qwen3-tts / edge-tts）
   - `client/emotion_map.py` 情感 → 动作组映射与播放
   - `client/server_launcher.py` 后端探活、自动拉起与退出清理
 - `server/`              后端（无 GUI）：FastAPI 路由 / 服务容器 / token 校验
-- `protocol/`            请求与 SSE 事件模型（client 与 server 共用）
+- `protocol/`            前后端共用的请求与 SSE 事件模型
 - `core/`                纯逻辑门面与会话管理（`facade` / `session` / `tracing`）
-- `chatbot.py`           AI 对话兼容适配器（保留模块级 `_agent` 供既有测试使用）
 - `agent/`               AI 对话核心
   - `agent/graph/`       LangGraph 陪伴主图（感知门控 / agent ⇄ tools / 游戏占位子图 / 运行时）
   - `agent/chat_agent.py` legacy 对话引擎（`AGENT_ENGINE=legacy` 时回滚使用）
-  - `agent/tool_manager.py` / `mode_configs/` 工具注册表与模式配置
+  - `agent/tool_manager.py`、`agent/mode_configs/` 工具注册表与模式配置
+- `chatbot.py`           兼容适配器（保留模块级 `_agent` 供既有测试使用）
 - `modelFactory/`        模型工厂（langchain ChatOpenAI，工厂模式）
 - `tools/common/`        公共工具（天气 / 联网搜索）
-- `utils/`               工具集（配置 / 日志 / 路径 / 提示词加载 / 时间注入）
+- `utils/`               配置 / 日志 / 路径 / 提示词 / .env / 时间注入工具
 - `prompts/`             系统提示词文本（不硬编码在代码中）
-- `config/`              配置文件（提示词路径 yaml；MCP 示例 `mcp_servers.example.json`）
-- `bench/`               批量评测脚本与固定 prompt（见 `docs/项目技术文档.md`）
-- `docs/`                文档：项目技术文档、前后端接口 JSON 契约、开发文档
-- `expression_tester.py` Live2D 表情动画调试台（独立运行，见 `docs/项目技术文档.md`）
+- `config/`              提示词路径 yaml；MCP 示例 `mcp_servers.example.json`
+- `tests/`               单元测试（`pytest`，覆盖逻辑模块与陪伴主图）
+- `bench/`               批量评测脚本与固定 prompt
+- `docs/`                技术文档、前后端接口 JSON 契约、开发文档
+- `expression_tester.py` Live2D 表情动画调试台（独立运行）
 - `resources.py`         资源目录常量
 - `Resources/`           Live2D 模型资源（HiYori 模型 + 动作）
 
 ## 运行指南
 
-### 1. .env 配置
+### 1. 前置依赖
 
-在项目根目录创建 `.env` 文件，完整模板如下：
+| 依赖 | 要求 | 说明 |
+| --- | --- | --- |
+| Python | 3.13+ | 项目声明 `requires-python >=3.13`，在 3.13.0 验证 |
+| uv | 建议 0.10+ | 依赖管理与运行入口（`uv sync` / `uv run`），在 0.10.12 验证 |
+| Node.js + npm | 18+（可选） | 仅部分 MCP 服务通过 `npx` 提供；不接入这类服务可不装。在 Node v24.10.0 / npm 11.19.0 验证 |
+| Windows | 10/11 | Live2D 透明窗口依赖 OpenGL |
+
+`uv` 安装后自带 `uvx`，用于运行 Python 版 MCP 服务（如 `mcp-server-fetch`）。
+
+### 2. .env 配置
+
+在项目根目录创建 `.env`，模板如下：
 
 ```text
-# 环境变量配置文件
-# 用于存储敏感信息，如API密钥、数据库连接等
+# 环境变量配置文件（敏感信息，勿提交）
 
-# 1.API密钥（支持任意 OpenAI 协议大模型：DeepSeek / 通义兼容端 / 本地 vLLM 等）
+# 1. 大模型连接（支持任意 OpenAI 协议：DeepSeek / 通义兼容端 / 本地 vLLM 等）
 API_KEY=sk-你的llm密钥
-# 1.1 大模型接口地址（OpenAI 兼容端点）
 BASE_URL=https://api.deepseek.com/v1
-# 1.2 大模型名称
 MODEL=deepseek-chat
 
-# 2.语音合成(TTS)配置项
-# TTS 运行模式（demo / dev）：
-#     demo = 演示模式：优先 qwen3-tts，失败时 edge-tts 兜底
-#     dev  = 开发模式：仅使用 edge-tts
+# 2. 语音合成（TTS）
+# TTS_MODE=demo：优先 qwen3-tts，失败时 edge-tts 兜底；dev：仅 edge-tts
 TTS_MODE=demo
-# 2.1  edge-tts 音色
 EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
-# 2.2 阿里云百炼 qwen3-tts 云端 TTS
-#     获取 API Key：阿里云百炼控制台 https://bailian.console.aliyun.com/
+# 阿里云百炼 qwen3-tts（可选，demo 模式优先使用）
 DASHSCOPE_API_KEY=sk-你的阿里云密钥
-#     模型：qwen3-tts-vd-2026-01-26（声音设计音色，HTTP 流式） / qwen3-tts-vc-2026-01-22（声音复刻音色）
-#     其他：cosyvoice-v2 / cosyvoice-v3-flash / qwen-audio-3.0-tts-plus 等（WebSocket 接入）
 DASHSCOPE_MODEL=qwen3-tts-vd-2026-01-26
-#     音色（qwen3-tts 常用）：longxiaoxia_v2 龙小夏(温柔年轻女声) / longxiaochun_v2 龙小淳(温柔姐姐)
-#     自定义声音设计/复刻音色：直接填音色 ID（需与模型匹配）
 DASHSCOPE_VOICE=音色ID
 ```
 
 说明：
 
-- `API_KEY` / `BASE_URL` / `MODEL` 为必填项，默认 DeepSeek，也可换任意 OpenAI 协议端。
-- 对话引擎默认使用 LangGraph 陪伴主图；如需回滚到旧引擎，设置 `AGENT_ENGINE=legacy`。
-- `TTS_MODE=demo` 时优先 qwen3-tts（需 `DASHSCOPE_API_KEY`），失败自动兜底 edge-tts；`dev` 模式只用 edge-tts（免费、零配置）。
-- 需要给本机接口加校验时，额外设置环境变量 `HADALI_TOKEN`；未配置时接口仅建议本机调试使用。
-- 可选 MCP 工具：把 `config/mcp_servers.example.json` 复制为 `config/mcp_servers.json` 并填入服务；未配置或加载失败时自动降级，不影响启动。也可用 `MCP_CONFIG_PATH` 指向其他配置文件。
+- `API_KEY` / `BASE_URL` / `MODEL` 为必填，默认 DeepSeek。
+- `TTS_MODE=demo` 需 `DASHSCOPE_API_KEY`，失败自动兜底 edge-tts；`dev` 模式只用 edge-tts（免费、零配置）。
+- 其余可选环境变量：
 
-  接入步骤（以本地 stdio 服务为例）：
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `AGENT_ENGINE` | `graph` | 对话引擎，`legacy` 可回滚旧引擎 |
+| `HADALI_TOKEN` | 空 | 后端接口校验 token；未配置仅建议本机使用 |
+| `MCP_CONFIG_PATH` | `config/mcp_servers.json` | MCP 配置文件路径 |
+| `MCP_LOAD_TIMEOUT` | `30` | 单个 MCP 服务加载超时（秒） |
 
-  1. 复制配置：`copy config\mcp_servers.example.json config\mcp_servers.json`
-  2. 按服务文档填写 `mcpServers`（支持 `stdio` / `sse` / `streamable_http`）：
+### 3. MCP 配置（非强制）
 
-     ```json
-     {
-       "mcpServers": {
-         "time": {
-           "transport": "stdio",
-           "command": "uvx",
-           "args": ["mcp-server-time", "--local-timezone=Asia/Shanghai"]
-         }
+不配置时仅使用内置的天气 / 联网搜索工具，功能正常。
+
+1. 复制配置模板：
+
+   ```powershell
+   copy config\mcp_servers.example.json config\mcp_servers.json
+   ```
+
+2. 按需填写 `mcpServers`（支持 `stdio` / `sse` / `streamable_http`）。推荐示例：
+
+   ```json
+   {
+     "mcpServers": {
+       "filesystem": {
+         "transport": "stdio",
+         "command": "npx",
+         "args": ["-y", "@modelcontextprotocol/server-filesystem", "D:\\soft\\ai_workspace"]
+       },
+       "fetch": {
+         "transport": "stdio",
+         "command": "uvx",
+         "args": ["mcp-server-fetch"]
+       },
+       "duckduckgo_search": {
+         "transport": "stdio",
+         "command": "uvx",
+         "args": ["duckduckgo-mcp-server"]
+       },
+       "context7": {
+         "transport": "stdio",
+         "command": "npx",
+         "args": ["-y", "@upstash/context7-mcp"]
        }
      }
-     ```
-
-  3. 重启后端（客户端退出重开即可；配置只在构建 agent 工具时读取并缓存）
-  4. 验证日志出现 `[graph.tooling]MCP 服务 time 工具：['time_get_current_time']`；工具名会带服务名前缀
-  5. 对话中直接描述任务即可，或点名“用 time 工具查一下现在几点”
-
-  说明：
-
-  - 多个服务是**逐个独立加载**的，某个服务包名错误 / 启动失败 / 超时只会跳过该服务并在日志打印原因链，不影响其他服务
-  - 单个服务默认超时 30 秒，可用环境变量 `MCP_LOAD_TIMEOUT=60` 调整（npx/uvx 首次冷启动会下载依赖，可能较慢）
-  - `uvx` 服务首次启动会安装依赖（如 `mcp-server-fetch`、`dokumen-pintar` 依赖较多）；可先在终端 `uv tool install <包名>` 预热，或临时调大 `MCP_LOAD_TIMEOUT`
-  - Windows 下 `npx` 若报 `EPERM ... _cacache\tmp`，是 npm 缓存目录不可写；可在该服务配置里加 `"env": {"npm_config_cache": "D:\\可写目录"}` 后重试
-  - 部分 npm 包（如 `duckduckgo-mcp`）依赖 Bun，未安装 Bun 会报 `'"bun"' is not recognized`；建议改用 `uvx duckduckgo-mcp-server`
-  - `mcp-server-git` 的 `--repository` 必须指向**已存在的 Git 仓库**，否则服务会因 “not a valid Git repository” 退出
-  - 未配置/配置损坏也会告警并跳过，不影响聊天
-  - 真实配置含密钥，已加入 `.gitignore`
-
-### 2. 运行方式
-
-项目为**前后端分离**架构：
-
-- `client/`（PySide6 + Live2D + TTS）：只负责界面、表情动画与语音播报
-- `server/`（FastAPI + uvicorn）：持有 Agent、会话历史、工具调用与大模型配置
-- 两者通过本机 HTTP + SSE 通信（默认 `http://127.0.0.1:8765`）
-
-1. 安装依赖（使用国内镜像加速）：
-
+   }
    ```
+
+3. 重启后端（重开客户端即可）。配置只在构建 agent 工具时读取并缓存；MCP 工具在**第一条消息**时加载，首轮可能稍慢。
+4. 验证日志出现 `[graph.tooling]MCP 服务 filesystem 工具：['filesystem_read_file', ...]`，工具名带服务名前缀。
+5. 对话中直接描述任务，或点名“用 context7 查一下这个库的文档”。
+
+注意事项：
+
+- 多个服务**逐个独立加载**，某个服务包名错误 / 启动失败 / 超时只跳过自身并打印原因链，不影响其他服务，也不影响聊天。
+- `uvx` 服务首次启动会安装依赖（`mcp-server-fetch` 等可能较慢）；可先 `uv tool install mcp-server-fetch` 预热，或调大 `MCP_LOAD_TIMEOUT`。
+- Windows 下 `npx` 报 `EPERM ... _cacache\tmp` 表示 npm 缓存目录不可写；可在该服务配置里加 `"env": {"npm_config_cache": "D:\\可写目录"}`。
+- 部分 npm 包（如 `duckduckgo-mcp`）依赖 Bun；未安装 Bun 时建议改用 `uvx duckduckgo-mcp-server`。
+- 真实配置可能含密钥，已在 `.gitignore` 中忽略。
+
+### 4. 运行方式
+
+前后端分离：`client/` 负责界面、表情与语音，`server/` 持有 Agent、历史、工具与大模型配置，二者通过本机 HTTP + SSE 通信（默认 `http://127.0.0.1:8765`）。
+
+1. 安装依赖：
+
+   ```powershell
    uv sync
    ```
 
-2. 按上一节完成 `.env` 配置。
+2. 完成 `.env`（以及可选的 MCP）配置。
 
-3. 启动程序（推荐：客户端会自动探活，必要时拉起后端）：
+3. 启动（推荐：客户端自动探活，必要时拉起后端）：
 
-   ```
+   ```powershell
    uv run python main.py
    ```
 
-   客户端会**先启动并等待后端就绪，再显示桌宠窗口**，避免后端尚未拉起时提前对话；首次启动的等待时间主要来自后端导入依赖。若后端启动失败，窗口仍会显示并给出错误提示。
+   客户端会**先启动并等待后端就绪，再显示桌宠窗口**，避免后端未就绪时提前对话；首次等待主要来自后端导入依赖。若后端启动失败，窗口仍会显示并给出错误提示。
 
-   也可以分开启动，便于查看后端日志 / 多客户端接入：
+   也可分开启动，便于查看后端日志或多客户端接入：
 
-   ```
+   ```powershell
    uv run python -m server --port 8765
    uv run python main.py --server-url http://127.0.0.1:8765 --no-spawn
    ```
 
-> 后端按 `session_id` 隔离对话历史（桌面端默认 `default`）。
-> `python main.py` 仍是原来的启动入口（现在是 `client/main.py` 的 shim）。
+4. 运行测试：
+
+   ```powershell
+   uv run pytest -q
+   ```
+
+> 后端按 `session_id` 隔离历史（桌面端默认 `default`）。
+> `python main.py` 仍是原入口（现为 `client/main.py` 的 shim）。
 
 更详细的实现说明见 [项目技术文档](docs/项目技术文档.md)，前后端对接以 [接口 JSON 契约](docs/前后端接口JSON契约_v1.md) 为准。
