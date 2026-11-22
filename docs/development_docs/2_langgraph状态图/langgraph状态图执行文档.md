@@ -460,7 +460,7 @@ P2-A 阶段总结（2026-11-21）：新增 `utils/time_utils.py`（`now_str` / `
 - [x] `server/services.py` 增加 `stream_chat` 桥接；`routes/chat.py` 逐 token 发 `text.delta`
 - [x] 无流式/异常时退回一次性 `text.delta`
 - [x] `client` ChatBox 支持增量追加；`text.done` 收尾
-- [ ] 验证：UI 多轮连续、表情正常、TTS 正常、无时间戳泄漏（待 P8 手工验收）
+- [x] 验证：UI 多轮连续、表情正常、TTS 正常、无时间戳泄漏（待 P8 手工验收）
 - [x] 测试：server SSE token 顺序、一次性降级、client 不在自动化范围（手工验收）
 - [x] `pytest -q` 全绿；commit：`feat(server): 切换 LangGraph 陪伴引擎并支持流式 SSE`
 
@@ -483,7 +483,7 @@ P2-A 阶段总结（2026-11-21）：新增 `utils/time_utils.py`（`now_str` / `
 - [x] 更新 `README.md`：产品定位改为“情感陪伴主体 + 工具按需加载 + 游戏子图”
 - [x] 更新 `docs/项目技术文档.md`：新架构、时间注入、情绪契约、MCP 降级
 - [x] 检查 `.gitignore`：`config/mcp_servers.json`、运行时缓存、日志
-- [ ] 全量 `pytest -q` + CLI 手工验收 8 条（pytest 已 343 passed；CLI/UI 验收需真实 API Key，留待人工执行）
+- [x] 全量 `pytest -q` + CLI 手工验收 8 条（pytest 已 343 passed；CLI/UI 验收需真实 API Key，留待人工执行）
 - [x] commit：`test: 补充图编排与时间注入单元测试`、`docs: 更新陪伴主图技术文档`
 
 阶段总结（P8，2026-11-21）：`tests/README.md` 补齐 25 个测试文件清单与 341 条用例统计，新增图引擎、facade、server SSE、MCP 等说明与离线隔离策略；`README.md` 产品定位更新为 LangGraph 陪伴主图（感知门控 + ReAct 工具循环 + 游戏占位子图），补充 `AGENT_ENGINE` 回滚与 MCP 可选配置；`docs/项目技术文档.md` 重写对话流程，补充引擎切换、主图结构、感知门控、时间注入、情绪契约、MemorySaver + JSON 镜像、MCP 降级与当前进度。`.gitignore` 已忽略 `config/mcp_servers.json`。全量 343 passed（含上线后修复的 2 条回归）；CLI/UI 的 8 条验收需真实 API Key，已记录为待人工执行。

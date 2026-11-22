@@ -1,6 +1,6 @@
 '''感知门控：判断本轮用户输入是否要进入游戏子图
 
-优先使用 langgraph-jev-router 的 FakeJev 本地规则后端（与 root_graph.py 用法一致）；
+优先使用 langgraph-jev-router 的 FakeJev 本地规则后端；
 导入失败或调用异常时回落到本地关键词规则，保证主图永远可运行。
 
 注意：FakeJev 关键词单命中置信度为 0.70 + 抖动，恰好 0.70 时不满足 > 0.7，
