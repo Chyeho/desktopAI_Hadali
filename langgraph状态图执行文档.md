@@ -492,6 +492,8 @@ P2-A 阶段总结（2026-11-21）：新增 `utils/time_utils.py`（`now_str` / `
 
 **上线后修复（2026-11-22，第二批）**：① 对话中时间字符串泄漏——`strip_time_markers()` 清除模型复述的任意位置时间标记，`text.done` 用最终干净文本覆盖流式展示；② 提示词加载统一到 `utils/prompt_loader.py`，路径由 `config/prompts_config.yml` 的 `graph_system_prompt_path` 提供，删除 `agent_node.py` 本地实现；③ `.env` 解析上移到 `utils/env_utils.py`，facade 与 TTS 复用。新增 14 条用例，全量 357 passed。
 
+**启动顺序调整（2026-11-22）**：`client/main.py` 改为先启动并等待后端就绪（`wait_for_backend()` + `QEventLoop`），再创建/显示主窗口；后端失败时仍显示窗口并提示错误，避免“窗口先出现、用户提前对话、等待后端拉起”的体验问题。
+
 ---
 
 ## 4. 验收核对表（对应提示词 8 条）

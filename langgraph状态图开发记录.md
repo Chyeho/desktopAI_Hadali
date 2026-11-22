@@ -185,6 +185,7 @@
 | --- | --- | --- | --- |
 | FIX-1 | 第一次启动聊天正常，第二次启动 AI 输出报错：`Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`（`invalid_request_error`） | 根因是 JSON 历史镜像完整保存了 `AIMessage(tool_calls)` + `ToolMessage`，重启后 `HistoryStore._trim` 可能从中间截断，恢复出的历史以孤立的 `ToolMessage` 开头。在 `agent/graph/runner.py` 新增 `_clean_history()`：恢复时与写镜像前都剥离 `ToolMessage` 和带 `tool_calls` 的 `AIMessage`，只保留纯对话消息；`HistoryStore` 的通用行为不变（legacy 仍完整保留） | 二次启动不再注入非法工具消息；工具结果仍通过最终 AI 回复进入记忆。新增 2 条回归用例，全量 343 passed |
 | FIX-2 | 对话中时间字符串泄漏到 UI（流式增量未按最终文本校正），且提示词加载路径散落在 `agent/graph/agent_node.py`、`.env` 解析在 `facade` 与 `client/voice/tts.py` 各写一份 | ① `utils/time_utils.py` 新增 `strip_time_markers()`，清除任意位置的方括号时间；`finalize_reply` 先清再追加后缀，`_build_result` 统一输出干净 reply；`text.done` 时用最终文本覆盖流式展示。② 提示词统一走 `utils/prompt_loader.py`：新增 `load_prompt_by_config(key)` / `load_graph_prompt()`，路径由 `config/prompts_config.yml` 的 `graph_system_prompt_path` 提供，删除 `agent_node` 里的本地实现。③ `.env` 解析上移到 `utils/env_utils.py`，`core/facade` 与 `client/voice/tts` 复用 | 时间戳不再出现在回复/历史正文（仅保留系统后缀）；提示词与 env 加载只有一处实现。新增 14 条用例，全量 357 passed |
+| FIX-3 | 前端窗口与 Live2D 先显示、后端仍在启动，用户快速输入时会长时间等待 | `client/main.py` 改为“先启后端、再显示窗口”：新增 `wait_for_backend()`，用 `QEventLoop` 等待 `ServerLauncher.ready/failed`（上限 `READY_TIMEOUT + 5s`），就绪后才创建并 `show()` 主窗口；失败时仍显示窗口并展示错误，同时回收 launcher | 冷启动期间用户无法提前对话；等待时长仅发生在窗口出现前。GUI 启动路径无自动化测试，随手工验收 |
 
 ---
 
@@ -204,6 +205,7 @@
 | P8 | `test: 补充图编排与时间注入单元测试` / `docs: 更新陪伴主图技术文档` | 已执行 |
 | FIX-1 | `fix(graph): 修复重启后恢复工具消息导致的非法请求` | 已执行 |
 | FIX-2 | `fix(graph): 修复时间戳泄漏并统一提示词与 env 加载` | 已执行 |
+| FIX-3 | `feat(client): 后端就绪后再显示主窗口` | 已执行 |
 
 ---
 
