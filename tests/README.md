@@ -43,7 +43,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 
 ## 测试文件清单
 
-共 **25 个测试文件、341 条用例**，覆盖纯逻辑模块与 LangGraph 陪伴主图。
+共 **25 个测试文件、343 条用例**，覆盖纯逻辑模块与 LangGraph 陪伴主图。
 
 | 测试文件 | 被测模块 | 用例数 | 覆盖要点 |
 | --- | --- | ---: | --- |
@@ -61,7 +61,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 | `test_graph_perception.py` | `agent/graph/perception.py` | 10 | FakeJev 路由、0.7 阈值边界、关键词兜底、时间前缀剥离 |
 | `test_graph_emotion.py` | `agent/graph/emotion.py` | 13 | 情绪标签解析、跨 token 过滤、非法标签回退 |
 | `test_graph_tooling.py` | `agent/graph/tooling.py` | 17 | 工具装配、时间工具剔除、MCP 配置读取/合并/失败降级 |
-| `test_graph_flow.py` | `agent/graph/` | 17 | 主图 chat/game 分支、工具循环、流式 token、多轮与 JSON 镜像、时间注入 |
+| `test_graph_flow.py` | `agent/graph/` | 19 | 主图 chat/game 分支、工具循环、流式 token、多轮与 JSON 镜像、时间注入、工具中间消息剥离 |
 | `test_weather.py` | `tools/common/weather.py` | 17 | 天气/风向中文映射、`get_weather` mock 网络请求的成功/回退/异常分支 |
 | `test_web_search.py` | `tools/common/web_search.py` | 13 | `_strip_tags`、`web_search` mock Bing 搜索的成功/无结果/异常分支 |
 | `test_chatbot.py` | `chatbot.py` | 15 | `_load_env`、`init_api_key*`（mock 工厂）、`chat_with_model` / `switch_mode` |
@@ -104,7 +104,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 ## 测试结果
 
 ```
-341 passed in 23.10s
+343 passed in 35.91s
 ```
 
 环境：Windows + Python 3.13 + uv 管理依赖。
@@ -114,7 +114,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 platform win32 -- Python 3.13.x, pytest-9.x, pluggy-1.x
 rootdir: .../desktopAI_Hadali
 configfile: pyproject.toml: [tool.pytest.ini_options]
-collected 341 items
+collected 343 items
 
 tests/test_chat_agent.py ....................................... [11%]
 tests/test_chatbot.py ...............                              [16%]
@@ -123,7 +123,7 @@ tests/test_expression_driver.py ................                   [22%]
 tests/test_facade_engine.py ..........                             [25%]
 tests/test_factory.py .........                                    [27%]
 tests/test_graph_emotion.py .............                          [31%]
-tests/test_graph_flow.py .................                         [36%]
+tests/test_graph_flow.py ...................                       [36%]
 tests/test_graph_perception.py ..........                          [39%]
 tests/test_graph_state.py ...                                      [40%]
 tests/test_graph_tooling.py .................                      [45%]
@@ -142,7 +142,7 @@ tests/test_tts.py .....................                            [91%]
 tests/test_weather.py .................                            [96%]
 tests/test_web_search.py .............                             [100%]
 
-======================= 341 passed in 23.10s =======================
+======================= 343 passed in 35.91s =======================
 ```
 
 ## 新增测试指引

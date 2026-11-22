@@ -479,14 +479,16 @@ P2-A 阶段总结（2026-11-21）：新增 `utils/time_utils.py`（`now_str` / `
 
 ### P8 测试、文档与收尾
 
-- [x] 补全图相关单元测试与测试说明（`tests/README.md` 更新为 25 个文件 / 341 条）
+- [x] 补全图相关单元测试与测试说明（`tests/README.md` 更新为 25 个文件 / 343 条）
 - [x] 更新 `README.md`：产品定位改为“情感陪伴主体 + 工具按需加载 + 游戏子图”
 - [x] 更新 `docs/项目技术文档.md`：新架构、时间注入、情绪契约、MCP 降级
 - [x] 检查 `.gitignore`：`config/mcp_servers.json`、运行时缓存、日志
-- [ ] 全量 `pytest -q` + CLI 手工验收 8 条（pytest 已 341 passed；CLI/UI 验收需真实 API Key，留待人工执行）
+- [ ] 全量 `pytest -q` + CLI 手工验收 8 条（pytest 已 343 passed；CLI/UI 验收需真实 API Key，留待人工执行）
 - [x] commit：`test: 补充图编排与时间注入单元测试`、`docs: 更新陪伴主图技术文档`
 
-阶段总结（P8，2026-11-21）：`tests/README.md` 补齐 25 个测试文件清单与 341 条用例统计，新增图引擎、facade、server SSE、MCP 等说明与离线隔离策略；`README.md` 产品定位更新为 LangGraph 陪伴主图（感知门控 + ReAct 工具循环 + 游戏占位子图），补充 `AGENT_ENGINE` 回滚与 MCP 可选配置；`docs/项目技术文档.md` 重写对话流程，补充引擎切换、主图结构、感知门控、时间注入、情绪契约、MemorySaver + JSON 镜像、MCP 降级与当前进度。`.gitignore` 已忽略 `config/mcp_servers.json`。全量 341 passed；CLI/UI 的 8 条验收需真实 API Key，已记录为待人工执行。
+阶段总结（P8，2026-11-21）：`tests/README.md` 补齐 25 个测试文件清单与 341 条用例统计，新增图引擎、facade、server SSE、MCP 等说明与离线隔离策略；`README.md` 产品定位更新为 LangGraph 陪伴主图（感知门控 + ReAct 工具循环 + 游戏占位子图），补充 `AGENT_ENGINE` 回滚与 MCP 可选配置；`docs/项目技术文档.md` 重写对话流程，补充引擎切换、主图结构、感知门控、时间注入、情绪契约、MemorySaver + JSON 镜像、MCP 降级与当前进度。`.gitignore` 已忽略 `config/mcp_servers.json`。全量 343 passed（含上线后修复的 2 条回归）；CLI/UI 的 8 条验收需真实 API Key，已记录为待人工执行。
+
+**上线后修复（2026-11-22）**：第二次启动报 `Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`。原因是 JSON 历史镜像保存了工具调用中间消息，裁剪/恢复后出现孤立 `ToolMessage`。`runner._clean_history()` 在恢复与写镜像前剥离 `ToolMessage` 与带 `tool_calls` 的 `AIMessage`，`HistoryStore` 通用行为不变；新增 2 条回归用例，全量 343 passed。
 
 ---
 

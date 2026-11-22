@@ -5,6 +5,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
+from agent.chat_agent import HistoryStore
 from agent.graph.main_graph import build_main_graph, route_after_perception
 from agent.graph.runner import CompanionGraphAgent
 
@@ -240,6 +241,54 @@ class TestHistoryMirror:
         raw = history_file.read_text(encoding="utf-8")
         assert re.search(r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] 我叫小林", raw)
         assert re.search(r"记住啦。 \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]", raw)
+
+    def test_restore_drops_orphan_tool_messages(self, tmp_path):
+        """历史里残留 ToolMessage / 带 tool_calls 的 AIMessage 时，恢复后不应注入模型
+
+        回归：第二次启动报 "Messages with role 'tool' must be a response to a
+        preceding message with 'tool_calls'"。
+        """
+        history_file = str(tmp_path / "history.json")
+        store = HistoryStore(file_path=history_file)
+        store.messages = [
+            HumanMessage(content="[2026-11-21 10:00] 今天天气怎么样"),
+            AIMessage(content="", tool_calls=[{
+                "name": "get_weather", "args": {"city": "北京"}, "id": "call_1",
+            }]),
+            ToolMessage(content="晴，25 度", tool_call_id="call_1"),
+            AIMessage(content="今天北京晴，25 度 [2026-11-21 10:00]"),
+        ]
+        store.save()
+
+        llm = _FakeLLM("记得天气。")
+        agent = CompanionGraphAgent(llm, history_file=history_file)
+        agent.chat("那明天呢")
+
+        sent = llm.calls[0]
+        assert not any(isinstance(m, ToolMessage) for m in sent)
+        assert not any(
+            isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in sent
+        )
+        # 纯对话内容仍保留
+        assert any("今天天气怎么样" in str(m.content) for m in sent)
+        assert any("今天北京晴" in str(m.content) for m in sent)
+
+    def test_mirror_strips_tool_messages(self, tmp_path):
+        """镜像写入前剥离工具中间消息，避免下次启动产生非法序列"""
+        history_file = str(tmp_path / "history.json")
+        agent = CompanionGraphAgent(_FakeLLM("好的。"), history_file=history_file)
+        agent._mirror_history([
+            HumanMessage(content="查天气"),
+            AIMessage(content="", tool_calls=[{
+                "name": "get_weather", "args": {}, "id": "call_1",
+            }]),
+            ToolMessage(content="晴", tool_call_id="call_1"),
+            AIMessage(content="今天晴"),
+        ])
+
+        saved = HistoryStore(file_path=history_file).messages
+        assert [type(m).__name__ for m in saved] == ["HumanMessage", "AIMessage"]
+        assert saved[-1].content == "今天晴"
 
 
 class TestStreamChat:

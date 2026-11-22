@@ -27,6 +27,21 @@ from utils.time_utils import DEFAULT_TIME_FORMAT, strip_reply_time, with_user_ti
 STREAM_FORWARD_NODES = {"agent", "game_notice"}
 
 
+def _clean_history(messages: list[BaseMessage]) -> list[BaseMessage]:
+    '''剔除工具中间消息，避免跨轮/跨进程恢复出非法消息序列
+
+    OpenAI 协议要求 role=tool 的消息必须紧跟在带 tool_calls 的 assistant
+    消息之后。JSON 镜像裁剪可能截断这对消息，重启后注入就会触发
+    "Messages with role 'tool' must be a response to a preceding message
+    with 'tool_calls'"。工具调用只是中间过程，不参与长期记忆，直接剥离。
+    '''
+    return [
+        m for m in messages
+        if not isinstance(m, ToolMessage)
+        and not (isinstance(m, AIMessage) and getattr(m, "tool_calls", None))
+    ]
+
+
 def _collect_turn_metrics(new_messages: list[BaseMessage]) -> dict:
     '''从本轮新增消息中统计模型调用轮数与工具调用记录'''
     steps = sum(1 for m in new_messages if isinstance(m, AIMessage))
@@ -88,9 +103,9 @@ class CompanionGraphAgent:
         if session_id not in self._restored_threads:
             self._restored_threads.add(session_id)
             if self.history is not None:
-                prior = [
+                prior = _clean_history([
                     m for m in self.history.messages if not isinstance(m, SystemMessage)
-                ]
+                ])
             self.messages = list(prior)
             if prior:
                 logger.info(f"[graph.runner]会话 {session_id} 从 JSON 恢复 {len(prior)} 条历史")
@@ -105,12 +120,15 @@ class CompanionGraphAgent:
         return state, base_len
 
     def _mirror_history(self, messages: list[BaseMessage]) -> None:
-        '''把图状态镜像到 JSON 文件（裁剪由 HistoryStore 负责）'''
+        '''把图状态镜像到 JSON 文件（裁剪由 HistoryStore 负责）
+
+        持久化前剥离工具中间消息，保证下次启动注入的历史可被模型直接接受。
+        '''
         self.messages = list(messages)
         if self.history is None:
             return
         try:
-            self.history.replace(self.messages)
+            self.history.replace(_clean_history(self.messages))
         except Exception as e:
             logger.error(f"[graph.runner]历史镜像写入失败：{str(e)}")
 

@@ -169,7 +169,7 @@
 ### P8：测试与文档收尾
 
 - [x] 代码/测试完成
-- [x] `pytest -q` 全绿（341 passed）
+- [x] `pytest -q` 全绿（收尾时 341 passed；后续修复后 343 passed）
 - [ ] CLI/UI 手工验收 8 条（需真实 API Key，留待人工执行）
 - [x] commit
 
@@ -178,6 +178,12 @@
 | P8-1 | `tests/README.md` 仍停留在 186 条用例、包含已删除的 `test_get_time.py`，与当前测试集不符 | 按 `pytest --collect-only` 重新统计 25 个文件 / 341 条，补齐图引擎、facade、server、MCP 等行与离线隔离说明 | 测试文档与实际一致 |
 | P8-2 | 技术文档仍在描述手写工具循环、JSON 严格输出与“时间工具” | 重写对话流程，补充引擎切换、主图结构、感知门控、时间注入、情绪契约、MemorySaver + JSON 镜像、MCP 降级 | 文档与新架构一致 |
 | P8-3 | 8 条验收中的“答对 / 人格化 / UI 干净”依赖真实模型与 GUI，无法在无 Key 的自动化环境完成 | 拆分验收：可自动化的（工具列表、路由、降级、时间注入/剥离）以单测覆盖；真实模型与 UI 项记录为待人工验收 | 自动化项全部通过，手工项已在执行文档标注 |
+
+### 上线后修复：第二次启动报 tool 消息错误
+
+| 编号 | 问题描述 | 解决方案 | 结果 |
+| --- | --- | --- | --- |
+| FIX-1 | 第一次启动聊天正常，第二次启动 AI 输出报错：`Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`（`invalid_request_error`） | 根因是 JSON 历史镜像完整保存了 `AIMessage(tool_calls)` + `ToolMessage`，重启后 `HistoryStore._trim` 可能从中间截断，恢复出的历史以孤立的 `ToolMessage` 开头。在 `agent/graph/runner.py` 新增 `_clean_history()`：恢复时与写镜像前都剥离 `ToolMessage` 和带 `tool_calls` 的 `AIMessage`，只保留纯对话消息；`HistoryStore` 的通用行为不变（legacy 仍完整保留） | 二次启动不再注入非法工具消息；工具结果仍通过最终 AI 回复进入记忆。新增 2 条回归用例，全量 343 passed |
 
 ---
 
@@ -195,6 +201,7 @@
 | P6 | `feat(server): 切换 LangGraph 陪伴引擎并支持流式 SSE` | 已执行（be8b23e） |
 | P7 | `feat(mcp): 接入可选 MCP 工具并支持降级` | 已执行（37c2e45） |
 | P8 | `test: 补充图编排与时间注入单元测试` / `docs: 更新陪伴主图技术文档` | 已执行 |
+| FIX-1 | `fix(graph): 修复重启后恢复工具消息导致的非法请求` | 已执行 |
 
 ---
 
