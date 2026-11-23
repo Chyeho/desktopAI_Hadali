@@ -1,7 +1,7 @@
 # 前后端接口 JSON 契约（协议 v1）
 
-本文是 `client/`（前端 / UI 进程）与 `server/`（后端 / FastAPI 进程）之间的**唯一对接依据**。
-契约的代码真源是 [protocol/events.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/protocol/events.py)（SSE 事件）与 [protocol/requests.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/protocol/requests.py)（请求体）。
+本文是 `client/`（前端 / UI 进程）与 `backend/`（后端 / FastAPI 进程）之间的**唯一对接依据**。
+契约的代码真源是 [backend/protocol/events.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/backend/protocol/events.py)（SSE 事件）与 [backend/protocol/requests.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/backend/protocol/requests.py)（请求体）。
 本文与代码不一致时，以代码为准，并应同步修订本文。
 
 | 项目 | 约定 |
@@ -21,8 +21,6 @@
 | 方法 | 路径 | 用途 | 响应类型 |
 | --- | --- | --- | --- |
 | GET | `/v1/health` | 探活、取版本与模型名 | `application/json` |
-| GET | `/v1/modes` | 模式列表 + 当前进程级模式 | `application/json` |
-| POST | `/v1/mode` | 切换进程级模式 | `application/json` |
 | POST | `/v1/chat` | **一轮对话**（核心接口） | `text/event-stream`（SSE） |
 | POST | `/v1/interrupt` | 打断当前轮（尽力而为） | `application/json` |
 
@@ -53,13 +51,13 @@
 > 注意这两种错误体结构不同（一个嵌套 `detail`、一个扁平）。前端解析 HTTP 4xx 时应兼容两种取法：
 > `body.detail.message ?? body.message ?? "未知错误"`。
 
-**业务校验失败（HTTP 400，如未知模式）**——同样是嵌套结构：
+**业务校验失败（HTTP 400，如非法 session_id）**——同样是嵌套结构：
 
 ```json
 {
   "detail": {
     "code": "BAD_REQUEST",
-    "message": "未知的 agent 模式：xxx"
+    "message": "非法 session_id：'../x'"
   }
 }
 ```
@@ -88,58 +86,7 @@
 
 ---
 
-## 3. `GET /v1/modes`
-
-返回模式注册表与当前进程级模式。
-
-**响应 200**
-
-```json
-{
-  "current": "emotion",
-  "modes": [
-    { "name": "emotion", "display_name": "情感陪伴" },
-    { "name": "office", "display_name": "桌面办公" }
-  ]
-}
-```
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `current` | string | 进程级当前模式 |
-| `modes[].name` | string | 模式标识，供 `/v1/chat` 的 `mode` 使用 |
-| `modes[].display_name` | string | 展示名 |
-
----
-
-## 4. `POST /v1/mode`
-
-切换**进程级**当前模式。已存在的会话在下一次对话时惰性跟随（不重建 agent）。
-
-**请求体**
-
-```json
-{ "mode": "office" }
-```
-
-| 字段 | 类型 | 必填 | 约束 |
-| --- | --- | --- | --- |
-| `mode` | string | 是 | 最短 1；必须在模式注册表中，否则 400 |
-
-**响应 200**
-
-```json
-{ "ok": true, "current": "office" }
-```
-
-**错误**
-
-- 未知模式 → 400，`{"detail":{"code":"BAD_REQUEST","message":"未知的 agent 模式：xxx"}}`
-- 缺字段 / 空串 → 400，扁平 `{"code":"BAD_REQUEST","message":"请求参数非法"}`
-
----
-
-## 5. `POST /v1/interrupt`
+## 3. `POST /v1/interrupt`
 
 打断当前轮。语义是**尽力而为**：服务端 agent 是同步阻塞调用，无法安全强杀工作线程，因此服务端只做确认；真正的停止发生在客户端（关闭 SSE 连接、停 TTS / 表情、丢弃后续事件）。
 
@@ -159,9 +106,9 @@
 
 ---
 
-## 6. `POST /v1/chat`（核心）
+## 4. `POST /v1/chat`（核心）
 
-### 6.1 请求
+### 4.1 请求
 
 | 项 | 值 |
 | --- | --- |
@@ -175,8 +122,7 @@
 ```json
 {
   "session_id": "default",
-  "text": "今天北京天气怎么样？",
-  "mode": null
+  "text": "今天北京天气怎么样？"
 }
 ```
 
@@ -184,7 +130,6 @@
 | --- | --- | --- | --- | --- |
 | `session_id` | string | 否 | `"default"` | 正则 `^[A-Za-z0-9_-]{1,64}$`（防路径穿越）；决定对话历史文件与串行锁 |
 | `text` | string | 是 | — | 最短 1；用户输入原文 |
-| `mode` | string \| null | 否 | `null` | `null` 表示使用服务端进程当前模式；非 null 时本轮临时切到该模式 |
 
 **响应头**
 
@@ -197,7 +142,7 @@ x-accel-buffering: no
 
 > `x-accel-buffering: no` 用于关闭反向代理缓冲，保证事件即时下发。
 
-### 6.2 SSE 帧格式
+### 4.2 SSE 帧格式
 
 每帧由三行组成，**没有** `id:` 与 `retry:` 行：
 
@@ -209,7 +154,7 @@ data: <单行 JSON>
 
 即 `event: {name}\ndata: {json}\n\n`。客户端收到后按 `event` 名查 `EVENT_MODEL_MAP` 反序列化；**未知事件名与非法 JSON 必须丢弃并继续消费**（只记日志，不中断整轮）。
 
-### 6.3 公共字段（所有事件都带）
+### 4.3 公共字段（所有事件都带）
 
 | 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -217,12 +162,12 @@ data: <单行 JSON>
 | `turn_id` | string | 32 位 hex | 本轮唯一 ID（`uuid4().hex`），跨事件不变 |
 | `ts` | int | — | 事件构造时的 Unix **毫秒**时间戳 |
 
-### 6.4 事件清单
+### 4.4 事件清单
 
 | 事件名 | 载荷字段 | 触发时机（服务端） | 前端应有行为 |
 | --- | --- | --- | --- |
-| `turn.start` | `mode: string` | 流开始第一帧 | 进入思考态；重置本轮错误标记 |
-| `state` | `value: "thinking" \| "speaking" \| "idle"` | 状态变化 | 见 §6.6 状态机 |
+| `turn.start` | `mode: string`（固定 `"emotion"`，保留字段兼容） | 流开始第一帧 | 进入思考态；重置本轮错误标记 |
+| `state` | `value: "thinking" \| "speaking" \| "idle"` | 状态变化 | 见 §4.7 状态机 |
 | `text.delta` | `text: string` | 模型回复完成，**整段一次性**下发 | 打字机显示（本期不是真流式分片） |
 | `text.done` | `text: string` | 紧跟 `text.delta` | 收尾（当前无额外动作，为未来真流式预留） |
 | `emotion` | `name: string`、`intensity?: number\|null` | 回复解析出情感标签后 | 触发 Live2D 动作；`intensity` 本期不发送 |
@@ -230,7 +175,7 @@ data: <单行 JSON>
 | `tool.result` | `name: string`、`ok: boolean`、`duration_ms: number` | 与 `tool.call` 成对出现 | 同上 |
 | `turn.end` | `reply: string`、`emotion: string`、`latency_ms: number`、`first_event_ms: number` | 成功路径最后一帧业务事件 | 播报语音、记录指标 |
 | `error` | `code: string`、`message: string`、`retryable: boolean` | 任意异常 | 显示错误；**本轮不播报** |
-| `audio.start` / `audio.delta` / `audio.end` | 见 §8 | **本期不发送**（模型已定义） | 收到可忽略 |
+| `audio.start` / `audio.delta` / `audio.end` | 见 §6 | **本期不发送**（模型已定义） | 收到可忽略 |
 
 详细模型：
 
@@ -246,7 +191,7 @@ class TurnEndEvent(BaseEvent):     reply: str; emotion: str; latency_ms: float; 
 class ErrorEvent(BaseEvent):       code: str; message: str; retryable: bool
 ```
 
-### 6.5 成功路径时序
+### 4.5 成功路径时序
 
 ```text
 seq 1  turn.start   {mode: "emotion"}
@@ -290,7 +235,7 @@ event: state
 data: {"seq":8,"turn_id":"8f1c...","ts":1762900001805,"value":"idle"}
 ```
 
-### 6.6 失败路径时序
+### 4.6 失败路径时序
 
 ```text
 seq 1  turn.start   {mode: "emotion"}
@@ -309,7 +254,7 @@ data: {"seq":4,"turn_id":"8f1c...","ts":1762900000003,"value":"idle"}
 
 > **无论成功或失败，事件流一定以 `state(idle)` 收尾**（`error` 之后也有），前端据此恢复输入，避免卡在思考态。
 
-### 6.7 状态机
+### 4.7 状态机
 
 ```text
             turn.start / state(thinking)
@@ -328,11 +273,11 @@ data: {"seq":4,"turn_id":"8f1c...","ts":1762900000003,"value":"idle"}
 
 ---
 
-## 7. 错误码（`error.code`）
+## 5. 错误码（`error.code`）
 
 | 错误码 | 含义 | `retryable` | 典型来源 |
 | --- | --- | --- | --- |
-| `BAD_REQUEST` | 请求参数/模式非法 | `false` | pydantic 校验失败、未知模式（`ValueError`） |
+| `BAD_REQUEST` | 请求参数非法 | `false` | pydantic 校验失败、非法 session_id（`ValueError`） |
 | `UNAUTHORIZED` | token 校验失败 | — | **不出现在 SSE 中**，仅 HTTP 401 |
 | `SESSION_BUSY` | 同会话已有请求在执行 | `true` | 预留，当前由前端 `is_busy()` 先行拦截 |
 | `LLM_TIMEOUT` | 大模型超时 | `true` | `TimeoutError` 或异常名含 `timeout` |
@@ -343,16 +288,16 @@ data: {"seq":4,"turn_id":"8f1c...","ts":1762900000003,"value":"idle"}
 
 规则：`retryable = (code != "BAD_REQUEST")`。**是否真的自动重试由前端决定**，后端只给建议。
 
-### 7.1 HTTP 状态码与前端提示对照
+### 5.1 HTTP 状态码与前端提示对照
 
 | 状态码 | 场景 | 参考提示文案 |
 | --- | --- | --- |
-| 400 | 参数非法 / 未知模式 | 请求参数错误，请检查输入后重试 |
+| 400 | 参数非法 | 请求参数错误，请检查输入后重试 |
 | 401 | token 不匹配 | 后端鉴权失败（token 不匹配），请重新启动客户端 |
 | 404 | 路径不存在（服务版本不符） | 后端接口不存在，请确认服务版本 |
 | 5xx | 服务端未捕获异常 | 后端返回错误（HTTP xxx） |
 
-### 7.2 连接层失败
+### 5.2 连接层失败
 
 以下情况**不属于**事件协议，由传输层直接上报给 UI：
 
@@ -360,12 +305,12 @@ data: {"seq":4,"turn_id":"8f1c...","ts":1762900000003,"value":"idle"}
 | --- | --- |
 | `httpx.ConnectError` / `ConnectTimeout`，且**一个事件都没收到** | 等待 1s 重试一次（`retry_delay`）；仍失败则提示“与后端的连接中断” |
 | 已收到任意事件（含 `turn.start`）后失败 | **不重试**（避免重复调用大模型），直接提示 |
-| HTTP 5xx / 4xx | 不重试，按 §7.1 提示 |
+| HTTP 5xx / 4xx | 不重试，按 §5.1 提示 |
 | 用户主动打断 | 关闭响应流，静默结束，不提示 |
 
 ---
 
-## 8. 保留事件：`audio.*`（本期不发送）
+## 6. 保留事件：`audio.*`（本期不发送）
 
 服务端尚未内置 TTS，以下模型已定义但**不会出现在流中**。前端收到时应忽略；未来服务端下发时按此解析。
 
@@ -377,7 +322,7 @@ data: {"seq":4,"turn_id":"8f1c...","ts":1762900000003,"value":"idle"}
 
 ---
 
-## 9. 并发与串行化
+## 7. 并发与串行化
 
 - 同一 `session_id` 的请求由服务端异步锁**串行**执行；不同 `session_id` 可并行。
 - 前端 `SseTransport` 另有单轮保护：上一轮未结束时 `send()` 直接失败并提示“上一轮回复尚未结束，请稍候”。
@@ -385,28 +330,28 @@ data: {"seq":4,"turn_id":"8f1c...","ts":1762900000003,"value":"idle"}
 
 ---
 
-## 10. 兼容性与演进规则
+## 8. 兼容性与演进规则
 
 1. **未知事件必须忽略**：前端 `decode_event()` 对不在 `EVENT_MODEL_MAP` 中的事件名只记 debug 日志并丢弃，不允许抛错或中断读流。
 2. **新增字段向后兼容**：pydantic 默认忽略多余字段，前端不得因未知字段失败。
 3. **字段只增不改**：已有字段的含义、类型、单位不得变更；确需变更时提升协议版本（`/v2`）。
 4. **顺序保证**：`seq` 严格递增；`turn.end` 之前必有 `text.done`（成功路径）；`state(idle)` 永远是该轮最后一帧。
-5. **事件真源**：任何新增事件需同时更新 `protocol/events.py` 的 `EventName` 与 `EVENT_MODEL_MAP`，并补 `tests/test_transport.py` 的解析用例。
+5. **事件真源**：任何新增事件需同时更新 `backend/protocol/events.py` 的 `EventName` 与 `EVENT_MODEL_MAP`，并补 `tests/test_transport.py` 的解析用例。
 
 ---
 
-## 11. 前端最小接入示例（Python / httpx）
+## 9. 前端最小接入示例（Python / httpx）
 
 ```python
 import httpx
 from httpx_sse import connect_sse
 
-from protocol.events import EVENT_MODEL_MAP
+from backend.protocol.events import EVENT_MODEL_MAP
 
 with httpx.Client(timeout=httpx.Timeout(connect=3.0, read=60.0, write=10.0)) as client:
     with connect_sse(
         client, "POST", "http://127.0.0.1:8765/v1/chat",
-        json={"session_id": "default", "text": "你好", "mode": None},
+        json={"session_id": "default", "text": "你好"},
         headers={"Accept": "text/event-stream", "X-Hadali-Token": token},
     ) as source:
         source.response.raise_for_status()
@@ -418,7 +363,7 @@ with httpx.Client(timeout=httpx.Timeout(connect=3.0, read=60.0, write=10.0)) as 
             handle(message.event, event.model_dump())
 ```
 
-## 12. 进程级契约：后端就绪通告
+## 10. 进程级契约：后端就绪通告
 
 自动拉起后端时（`--port 0`，端口由系统分配），后端在**真正完成监听后**向 stdout 打印一行，供客户端解析：
 
@@ -432,17 +377,18 @@ HADALI_SERVER_READY {"port": 1864}
 
 ---
 
-## 13. 契约校验位置
+## 11. 契约校验位置
 
 | 内容 | 文件 |
 | --- | --- |
-| 事件与请求模型（真源） | [protocol/events.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/protocol/events.py)、[protocol/requests.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/protocol/requests.py) |
-| 服务端实现 | [server/routes/chat.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/server/routes/chat.py)、[server/routes/meta.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/server/routes/meta.py)、[server/security.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/server/security.py) |
+| 事件与请求模型（真源） | [backend/protocol/events.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/backend/protocol/events.py)、[backend/protocol/requests.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/backend/protocol/requests.py) |
+| 服务端实现 | [backend/api/routes/chat.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/backend/api/routes/chat.py)、[backend/api/routes/meta.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/backend/api/routes/meta.py)、[backend/api/security.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/backend/api/security.py) |
 | 客户端解析与传输 | [client/transport/client.py](file:///d:/soft/trae/Trae%20CN/projects/desktopAI_Hadali/client/transport/client.py) |
 | 契约测试 | `tests/test_server_api.py`（端到端 SSE、错误码、`first_event_ms`）、`tests/test_transport.py`（解码、重试、鉴权） |
 
-## 14. 变更记录
+## 12. 变更记录
 
 | 日期 | 版本 | 变更 |
 | --- | --- | --- |
 | 2026-11-19 | v1 | 首版：整理 HTTP + SSE 接口、事件模型、错误码、并发与演进规则 |
+| 2026-11-23 | v1（兼容修订） | 移除多模式：删除 `/v1/modes`、`/v1/mode` 与 `ChatRequest.mode`；`turn.start.mode` 保留字段并固定为 `"emotion"`；后端路径由 `server/` 迁至 `backend/` |
