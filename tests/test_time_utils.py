@@ -6,6 +6,7 @@ from datetime import datetime
 
 from utils.time_utils import (
     DEFAULT_TIME_FORMAT,
+    TimeMarkerStreamFilter,
     now_str,
     strip_reply_time,
     strip_time_markers,
@@ -94,3 +95,34 @@ class TestStripTimeMarkers:
 
     def test_empty_text(self):
         assert strip_time_markers("") == ""
+
+
+class TestTimeMarkerStreamFilter:
+    """TimeMarkerStreamFilter：流式删除时间标记（含节点最终消息补发）"""
+
+    def test_remove_tail_marker_single_chunk(self):
+        filter_ = TimeMarkerStreamFilter()
+        assert filter_.feed("我在呢 [2026-11-21 14:30]") == "我在呢"
+        assert filter_.flush() == ""
+
+    def test_remove_marker_split_across_chunks(self):
+        filter_ = TimeMarkerStreamFilter()
+        assert filter_.feed("我在呢 [2026-11-") == "我在呢"
+        assert filter_.feed("21 14:30]") == ""
+        assert filter_.flush() == ""
+
+    def test_keep_normal_text_with_bracket(self):
+        filter_ = TimeMarkerStreamFilter()
+        assert filter_.feed("结果[1] 很好") == "结果[1] 很好"
+        assert filter_.flush() == ""
+
+    def test_lone_bracket_flushed(self):
+        filter_ = TimeMarkerStreamFilter()
+        assert filter_.feed("看这里 [") == "看这里"
+        assert filter_.flush() == " ["
+
+    def test_remove_inner_marker(self):
+        filter_ = TimeMarkerStreamFilter()
+        output = filter_.feed("现在是 [2026-11-21 14:30]，吃饭啦")
+        assert "2026" not in output
+        assert "吃饭啦" in output

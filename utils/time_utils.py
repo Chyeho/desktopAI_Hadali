@@ -16,6 +16,10 @@ _USER_PREFIX_RE = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*")
 _REPLY_SUFFIX_RE = re.compile(r"\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*$")
 # 任意位置的方括号时间标记（模型可能复述），连前导空白一起删除
 _TIME_MARKER_RE = re.compile(r"\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]")
+# 可能是时间标记开头的未完成片段（用于流式跨 token 缓冲）
+_PARTIAL_TIME_RE = re.compile(
+    r"\s*\[\d{0,4}(?:-\d{0,2}(?:-\d{0,2}(?: \d{0,2}(?::\d{0,2})?)?)?)?$"
+)
 
 
 def now_str(dt: datetime | None = None, fmt: str = DEFAULT_TIME_FORMAT) -> str:
@@ -49,3 +53,31 @@ def with_reply_time(reply: str, dt: datetime | None = None,
                     fmt: str = DEFAULT_TIME_FORMAT) -> str:
     '''给 AI 回复加时间后缀；重复调用不会叠加'''
     return f"{strip_reply_time(reply)} [{now_str(dt, fmt)}]"
+
+
+class TimeMarkerStreamFilter:
+    '''流式过滤方括号时间标记，支持标记被拆到多个 token
+
+    LangGraph 的 messages 流除了模型 token，还会补发一次节点最终消息的
+    增量（例如仅包含 ` [2026-11-23 12:52]` 后缀）。若直接转发，UI 会
+    在回复末尾看到时间字符串。这里在流层删除完整标记，并缓冲可能是
+    标记开头的未完成片段。
+    '''
+
+    def __init__(self):
+        self._buffer = ""
+
+    def feed(self, text: str) -> str:
+        self._buffer += text or ""
+        self._buffer = _TIME_MARKER_RE.sub("", self._buffer)
+        match = _PARTIAL_TIME_RE.search(self._buffer)
+        if match:
+            output = self._buffer[:match.start()]
+            self._buffer = self._buffer[match.start():]
+            return output
+        output, self._buffer = self._buffer, ""
+        return output
+
+    def flush(self) -> str:
+        output, self._buffer = self._buffer, ""
+        return output

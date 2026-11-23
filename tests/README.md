@@ -43,7 +43,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 
 ## 测试文件清单
 
-共 **26 个测试文件、363 条用例**，覆盖纯逻辑模块与 LangGraph 陪伴主图。
+共 **26 个测试文件、368 条用例**，覆盖纯逻辑模块与 LangGraph 陪伴主图。
 
 | 测试文件 | 被测模块 | 用例数 | 覆盖要点 |
 | --- | --- | ---: | --- |
@@ -52,7 +52,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 | `test_prompt_loader.py` | `utils/prompt_loader.py` | 6 | 提示词文件读取、配置键加载、默认系统提示词与陪伴主图提示词 |
 | `test_env_utils.py` | `utils/env_utils.py` | 5 | `.env` 解析、注释/引号、缺失文件抛错与 `missing_ok` 降级 |
 | `test_logger_handler.py` | `utils/logger_handler.py` | 6 | 日志器幂等创建、控制台/文件处理器、日志级别 |
-| `test_time_utils.py` | `utils/time_utils.py` | 18 | `now_str` / `with_user_time` / `with_reply_time` / 前后缀剥离 / 任意位置时间标记清除与幂等性 |
+| `test_time_utils.py` | `utils/time_utils.py` | 23 | `now_str` / `with_user_time` / `with_reply_time` / 前后缀剥离 / 任意位置时间标记清除 / `TimeMarkerStreamFilter` 跨块去标记与幂等性 |
 | `test_expression_driver.py` | `agent/expression_driver.py` | 16 | 10 种情感标签集合、情感→动作映射、`drive_expression` 各分支 |
 | `test_tool_manager.py` | `agent/tool_manager.py` | 11 | 全量工具注册表（无时间工具）、白名单过滤、未注册工具忽略 |
 | `test_mode_configs.py` | `agent/mode_configs/` | 16 | `MODE_REGISTRY` 结构、emotion/office 配置字段完整性、默认模式 |
@@ -105,7 +105,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 ## 测试结果
 
 ```
-363 passed in 26.07s
+368 passed in 73.76s
 ```
 
 环境：Windows + Python 3.13 + uv 管理依赖。
@@ -115,7 +115,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 platform win32 -- Python 3.13.x, pytest-9.x, pluggy-1.x
 rootdir: .../desktopAI_Hadali
 configfile: pyproject.toml: [tool.pytest.ini_options]
-collected 363 items
+collected 368 items
 
 tests/test_chat_agent.py ....................................... [11%]
 tests/test_chatbot.py ...............                              [16%]
@@ -136,7 +136,7 @@ tests/test_prompt_loader.py ......                                 [55%]
 tests/test_protocol.py .......................                     [61%]
 tests/test_server_api.py .........................                 [69%]
 tests/test_session.py ............                                 [72%]
-tests/test_time_utils.py ..................                        [76%]
+tests/test_time_utils.py .......................                   [76%]
 tests/test_tool_manager.py ...........                             [79%]
 tests/test_tracing.py ......                                       [81%]
 tests/test_transport.py .............                              [85%]
@@ -144,7 +144,7 @@ tests/test_tts.py .....................                            [91%]
 tests/test_weather.py .................                            [96%]
 tests/test_web_search.py .............                             [100%]
 
-======================= 363 passed in 26.07s =======================
+======================= 368 passed in 73.76s =======================
 ```
 
 ## 新增测试指引

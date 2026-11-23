@@ -23,6 +23,7 @@ from agent.graph.main_graph import build_main_graph
 from utils.logger_handler import logger
 from utils.time_utils import (
     DEFAULT_TIME_FORMAT,
+    TimeMarkerStreamFilter,
     strip_time_markers,
     with_user_time,
 )
@@ -181,6 +182,7 @@ class CompanionGraphAgent:
         config = self._config(session_id)
 
         filter_ = EmotionStreamFilter()
+        time_filter = TimeMarkerStreamFilter()
         final_state: dict | None = None
 
         for mode, payload in self.graph.stream(
@@ -192,13 +194,20 @@ class CompanionGraphAgent:
                 if metadata.get("langgraph_node") not in STREAM_FORWARD_NODES:
                     continue
                 content = chunk.content if isinstance(chunk.content, str) else ""
+                # 先剔除时间标记（含节点最终消息补发的后缀），再处理情绪标签
+                content = time_filter.feed(content)
+                if not content:
+                    continue
                 delta = filter_.feed(content)
                 if delta:
                     yield ("delta", delta)
             elif mode == "values":
                 final_state = payload
 
-        tail = filter_.flush()
+        tail = time_filter.flush()
+        if tail:
+            tail = filter_.feed(tail)
+        tail += filter_.flush()
         if tail:
             yield ("delta", tail)
 

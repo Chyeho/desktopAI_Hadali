@@ -49,3 +49,11 @@ GenieTTSData/
 .vscode/
 Thumbs.db
 .DS_Store
+
+live2dmascot/
+
+# 评测需求参考文档（仅本地参考，禁止提交）
+agent评测体系说明文档.md
+
+# 评测运行产物
+evals/reports/
