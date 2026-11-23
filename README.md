@@ -26,16 +26,13 @@
   - `client/voice/tts.py` 语音合成（qwen3-tts / edge-tts）
   - `client/emotion_map.py` 情感 → 动作组映射与播放
   - `client/server_launcher.py` 后端探活、自动拉起与退出清理
-- `server/`              后端（无 GUI）：FastAPI 路由 / 服务容器 / token 校验
-- `protocol/`            前后端共用的请求与 SSE 事件模型
-- `core/`                纯逻辑门面与会话管理（`facade` / `session` / `tracing`）
-- `agent/`               AI 对话核心
-  - `agent/graph/`       LangGraph 陪伴主图（感知门控 / agent ⇄ tools / 游戏占位子图 / 运行时）
-  - `agent/chat_agent.py` legacy 对话引擎（`AGENT_ENGINE=legacy` 时回滚使用）
-  - `agent/tool_manager.py`、`agent/mode_configs/` 工具注册表与模式配置
-- `chatbot.py`           兼容适配器（保留模块级 `_agent` 供既有测试使用）
-- `modelFactory/`        模型工厂（langchain ChatOpenAI，工厂模式）
-- `tools/common/`        公共工具（天气 / 联网搜索）
+- `backend/`             后端（无 GUI）
+  - `backend/api/`       FastAPI 路由 / 服务容器 / token 校验（`python -m backend`）
+  - `backend/agent/`     LangGraph 陪伴主图、历史与回合类型、公共工具
+  - `backend/core/`      纯逻辑门面与会话管理（`facade` / `session` / `tracing`）
+  - `backend/protocol/`  前后端共用的请求与 SSE 事件模型
+  - `backend/model_factory/` 模型工厂（langchain ChatOpenAI，工厂模式）
+- `archive/legacy_multi_mode/` 旧版多模式 agent 归档（不参与运行与测试）
 - `utils/`               配置 / 日志 / 路径 / 提示词 / .env / 时间注入工具
 - `prompts/`             系统提示词文本（不硬编码在代码中）
 - `config/`              提示词路径 yaml；MCP 示例 `mcp_servers.example.json`
@@ -90,7 +87,6 @@ DASHSCOPE_VOICE=音色ID
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `AGENT_ENGINE` | `graph` | 对话引擎，`legacy` 可回滚旧引擎 |
 | `HADALI_TOKEN` | 空 | 后端接口校验 token；未配置仅建议本机使用 |
 | `MCP_CONFIG_PATH` | `config/mcp_servers.json` | MCP 配置文件路径 |
 | `MCP_LOAD_TIMEOUT` | `30` | 单个 MCP 服务加载超时（秒） |

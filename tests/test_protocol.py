@@ -20,7 +20,7 @@ from backend.protocol.events import (
     TurnEndEvent,
     TurnStartEvent,
 )
-from backend.protocol.requests import ChatRequest, InterruptRequest, ModeRequest
+from backend.protocol.requests import ChatRequest, InterruptRequest
 
 
 class TestChatRequest:
@@ -29,7 +29,6 @@ class TestChatRequest:
     def test_defaults(self):
         req = ChatRequest(text="你好")
         assert req.session_id == "default"
-        assert req.mode is None
 
     def test_accepts_valid_session_id(self):
         assert ChatRequest(session_id="a-b_C9", text="x").session_id == "a-b_C9"
@@ -45,7 +44,7 @@ class TestChatRequest:
 
 
 class TestOtherRequests:
-    """InterruptRequest / ModeRequest"""
+    """InterruptRequest"""
 
     def test_interrupt_default_session(self):
         assert InterruptRequest().session_id == "default"
@@ -53,10 +52,6 @@ class TestOtherRequests:
     def test_interrupt_rejects_bad_session(self):
         with pytest.raises(ValidationError):
             InterruptRequest(session_id="..")
-
-    def test_mode_requires_value(self):
-        with pytest.raises(ValidationError):
-            ModeRequest(mode="")
 
 
 class TestEvents:

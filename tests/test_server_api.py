@@ -1,7 +1,7 @@
 """单元测试：server HTTP API
 
 用 httpx.ASGITransport + 假服务（FakeServices），不请求真实模型 / 网络。
-覆盖健康检查、模式接口、SSE 事件顺序、错误分支、参数校验与 token 鉴权。
+覆盖健康检查、SSE 事件顺序、错误分支、参数校验与 token 鉴权。
 """
 import asyncio
 import json
@@ -39,30 +39,20 @@ class FakeServices:
     """与 server.services.Services 同接口的测试替身"""
 
     model_name = "fake-model"
-    current_mode = "emotion"
     turns_file = None
 
     def __init__(self, result=None, exc=None, turns_file=None):
         self.agent = _FakeAgent(result or _result(), exc)
         self.turns_file = turns_file
-        self.current_mode = "emotion"
         self.last_call = None
         self._locks = {}
 
     def lock(self, session_id):
         return self._locks.setdefault(session_id, asyncio.Lock())
 
-    def chat(self, session_id, text, mode=None):
-        self.last_call = (session_id, text, mode)
+    def chat(self, session_id, text):
+        self.last_call = (session_id, text)
         return self.agent.chat(text)
-
-    def list_modes(self):
-        return [{"name": "emotion", "display_name": "情感陪伴"}]
-
-    def set_mode(self, name):
-        if name == "bad":
-            raise ValueError("未知的 agent 模式：bad")
-        self.current_mode = name
 
 
 def _request(services, method, path, **kwargs):
@@ -92,28 +82,12 @@ def _parse_sse(text):
 
 
 class TestMeta:
-    """健康检查与模式接口"""
+    """健康检查"""
 
     def test_health(self):
         resp = _request(FakeServices(), "GET", "/v1/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok", "version": "0.1.0", "model": "fake-model"}
-
-    def test_list_modes(self):
-        resp = _request(FakeServices(), "GET", "/v1/modes")
-        assert resp.status_code == 200
-        assert resp.json()["current"] == "emotion"
-        assert resp.json()["modes"][0]["name"] == "emotion"
-
-    def test_switch_mode(self):
-        services = FakeServices()
-        resp = _request(services, "POST", "/v1/mode", json={"mode": "office"})
-        assert resp.status_code == 200
-        assert resp.json() == {"ok": True, "current": "office"}
-
-    def test_switch_unknown_mode_returns_400(self):
-        resp = _request(FakeServices(), "POST", "/v1/mode", json={"mode": "bad"})
-        assert resp.status_code == 400
 
 
 class TestChatStream:
@@ -149,7 +123,7 @@ class TestChatStream:
         assert payload["text.done"]["text"] == "你好呀"
         assert payload["emotion"]["name"] == "happy"
         assert payload["turn.end"]["reply"] == "你好呀"
-        assert services.last_call == ("default", "你好", None)
+        assert services.last_call == ("default", "你好")
 
     def test_states_in_order(self):
         resp = _request(FakeServices(), "POST", "/v1/chat", json={"text": "hi"})
@@ -166,16 +140,16 @@ class TestChatStream:
         assert names.index("tool.result") > names.index("tool.call")
         assert names[-2:] == ["turn.end", "state"]
 
-    def test_mode_and_session_passed_through(self):
+    def test_session_passed_through(self):
         services = FakeServices()
         resp = _request(
             services, "POST", "/v1/chat",
-            json={"session_id": "work", "text": "hi", "mode": "office"},
+            json={"session_id": "work", "text": "hi"},
         )
         assert resp.status_code == 200
-        assert services.last_call == ("work", "hi", "office")
+        assert services.last_call == ("work", "hi")
         events = dict(_parse_sse(resp.text))
-        assert events["turn.start"]["mode"] == "office"
+        assert events["turn.start"]["mode"] == "emotion"
 
     def test_agent_error_emits_error_then_idle(self):
         resp = _request(FakeServices(exc=RuntimeError("boom")), "POST", "/v1/chat", json={"text": "hi"})
@@ -232,8 +206,8 @@ class FakeStreamingServices(FakeServices):
         super().__init__(result=result)
         self.deltas = tuple(deltas)
 
-    def stream_chat(self, session_id, text, mode=None):
-        self.last_call = (session_id, text, mode)
+    def stream_chat(self, session_id, text):
+        self.last_call = (session_id, text)
 
         def gen():
             for piece in self.deltas:
@@ -250,7 +224,7 @@ class FakeFailingStreamServices(FakeServices):
         super().__init__()
         self.exc = exc
 
-    def stream_chat(self, session_id, text, mode=None):
+    def stream_chat(self, session_id, text):
         exc = self.exc
 
         def gen():
@@ -263,7 +237,7 @@ class FakeFailingStreamServices(FakeServices):
 class FakeNoDoneStreamServices(FakeServices):
     """流式生成器只产出 delta 就结束（缺 done），验证路由兜底报错"""
 
-    def stream_chat(self, session_id, text, mode=None):
+    def stream_chat(self, session_id, text):
         def gen():
             yield ("delta", "你")
 
@@ -295,17 +269,17 @@ class TestChatStreamingGraph:
         payload = dict(events)
         assert payload["text.done"]["text"] == "你好呀"
         assert payload["emotion"]["name"] == "happy"
-        assert services.last_call == ("default", "你好", None)
+        assert services.last_call == ("default", "你好")
 
-    def test_stream_mode_and_session_passed_through(self):
+    def test_stream_session_passed_through(self):
         services = FakeStreamingServices()
         resp = _request(
             services, "POST", "/v1/chat",
-            json={"session_id": "work", "text": "hi", "mode": "office"},
+            json={"session_id": "work", "text": "hi"},
         )
         assert resp.status_code == 200
-        assert services.last_call == ("work", "hi", "office")
-        assert dict(_parse_sse(resp.text))["turn.start"]["mode"] == "office"
+        assert services.last_call == ("work", "hi")
+        assert dict(_parse_sse(resp.text))["turn.start"]["mode"] == "emotion"
 
     def test_stream_error_maps_to_bad_request(self):
         resp = _request(
@@ -329,7 +303,7 @@ class TestChatStreamingGraph:
         assert "流式对话未返回最终结果" in error["message"]
 
     def test_legacy_fallback_emits_single_delta(self):
-        """没有 stream_chat 的 legacy 服务：仍应一次性下发完整回复"""
+        """没有 stream_chat 的服务：仍应一次性下发完整回复"""
         resp = _request(FakeServices(), "POST", "/v1/chat", json={"text": "你好"})
         deltas = [data["text"] for name, data in _parse_sse(resp.text) if name == "text.delta"]
         assert deltas == ["你好呀"]

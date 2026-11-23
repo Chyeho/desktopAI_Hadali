@@ -34,6 +34,7 @@ dev = ["pytest>=8.0"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+norecursedirs = ["archive"]
 markers = [
     "live: 需要真实模型与网络的实时冒烟（RUN_LIVE_EVALS=1）",
 ]

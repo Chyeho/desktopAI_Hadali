@@ -1,4 +1,4 @@
-'''会话管理：session_id → ChatAgent，以及 per-session 异步锁
+'''会话管理：session_id → 陪伴主图 Agent，以及 per-session 异步锁
 
 - `default` 会话沿用 `chat_history/default.json`，老对话记录不丢；
 - 其他会话写入 `chat_history/<session_id>.json`；
@@ -9,7 +9,7 @@ import os
 import re
 import threading
 
-from backend.agent.chat_agent import ChatAgent
+from backend.agent.graph.runner import CompanionGraphAgent
 from backend.agent.history import HISTORY_DIR
 from backend.core import facade
 
@@ -22,7 +22,7 @@ class SessionManager:
     def __init__(self, agent_factory=None, history_dir: str = None):
         self._agent_factory = agent_factory or self._create_agent_from_env
         self.history_dir = history_dir or HISTORY_DIR
-        self._agents: dict[str, ChatAgent] = {}
+        self._agents: dict[str, CompanionGraphAgent] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         # 保护两个字典（server 内 agent 创建可能发生在 worker 线程）
         self._guard = threading.Lock()
@@ -40,11 +40,11 @@ class SessionManager:
         name = "default.json" if session_id == "default" else f"{session_id}.json"
         return os.path.join(self.history_dir, name)
 
-    def _create_agent_from_env(self, session_id: str) -> ChatAgent:
+    def _create_agent_from_env(self, session_id: str) -> CompanionGraphAgent:
         '''默认工厂：从 .env 读连接参数，使用该会话专属的历史文件'''
         return facade.create_agent_from_env(history_file=self.history_file(session_id))
 
-    def get_agent(self, session_id: str) -> ChatAgent:
+    def get_agent(self, session_id: str) -> CompanionGraphAgent:
         '''获取（必要时创建）该会话的 agent'''
         self.validate_session_id(session_id)
         with self._guard:

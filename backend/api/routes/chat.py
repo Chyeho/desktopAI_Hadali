@@ -25,7 +25,7 @@ from backend.protocol.events import (
 )
 from backend.protocol.requests import ChatRequest, InterruptRequest
 from backend.api.security import verify_token
-from backend.api.services import Services, get_services
+from backend.api.services import AGENT_MODE, Services, get_services
 
 router = APIRouter(prefix="/v1", dependencies=[Depends(verify_token)])
 
@@ -78,7 +78,8 @@ async def _iterate_sync_generator(gen):
 async def chat(req: ChatRequest, services: Services = Depends(get_services)):
     '''一轮对话：以 SSE 事件流返回思考状态、回复、情感、工具调用与指标'''
     turn_id = uuid.uuid4().hex
-    mode = req.mode or services.current_mode
+    # 单引擎架构：协议中的 mode 字段固定为情感陪伴
+    mode = AGENT_MODE
     seq = 0
     started = time.perf_counter()
     first_event_ms = None   # 请求进入 → 首个事件写出（由事件循环调度决定）
@@ -104,17 +105,17 @@ async def chat(req: ChatRequest, services: Services = Depends(get_services)):
             yield emit(EventName.STATE, StateEvent, value=StateValue.THINKING)
 
             result = None
-            # 图引擎支持逐 token 流式；legacy 引擎 stream_chat 返回 None，退回一次性
+            # 主图支持逐 token 流式；服务未提供 stream_chat 时退回一次性下发
             stream_factory = getattr(services, "stream_chat", None)
             async with services.lock(req.session_id):
                 stream = (
-                    stream_factory(req.session_id, req.text, req.mode)
+                    stream_factory(req.session_id, req.text)
                     if callable(stream_factory) else None
                 )
                 if stream is None:
                     # Agent 同步阻塞实现：放到工作线程执行，避免卡住事件循环
                     result = await asyncio.to_thread(
-                        services.chat, req.session_id, req.text, req.mode
+                        services.chat, req.session_id, req.text
                     )
                     yield emit(EventName.STATE, StateEvent, value=StateValue.SPEAKING)
                     yield emit(EventName.TEXT_DELTA, TextDeltaEvent, text=result["reply"])
