@@ -40,7 +40,8 @@
 - `prompts/`             系统提示词文本（不硬编码在代码中）
 - `config/`              提示词路径 yaml；MCP 示例 `mcp_servers.example.json`
 - `tests/`               单元测试（`pytest`，覆盖逻辑模块与陪伴主图）
-- `bench/`               批量评测脚本与固定 prompt
+- `evals/`               行为评测（确定性回归 + 可选 live 冒烟）
+- `bench/`               真实模型性能基准（延迟 / 工具率，需 API Key 与网络）
 - `docs/`                技术文档、前后端接口 JSON 契约、开发文档
 - `expression_tester.py` Live2D 表情动画调试台（独立运行）
 - `resources.py`         资源目录常量
@@ -172,11 +173,17 @@ DASHSCOPE_VOICE=音色ID
    uv run python main.py --server-url http://127.0.0.1:8765 --no-spawn
    ```
 
-4. 运行测试：
+4. 运行测试与评测：
 
    ```powershell
-   uv run pytest -q
+   uv run pytest -q                     # 单元测试（无需 API Key）
+   uv run pytest evals/ -q              # 行为评测（确定性回归，无需 API Key）
+   $env:RUN_LIVE_EVALS = "1"
+   uv run pytest evals/live -m live -q  # 实时冒烟（需 .env 配置 API_KEY）
    ```
+
+   `tests/` 覆盖模块逻辑，`evals/` 覆盖路由/工具/时间/容错/流式/记忆等行为回归，
+   `bench/` 用真实模型统计延迟与工具调用率，三者分工详见 [评测说明](evals/README.md)。
 
 > 后端按 `session_id` 隔离历史（桌面端默认 `default`）。
 > `python main.py` 仍是原入口（现为 `client/main.py` 的 shim）。

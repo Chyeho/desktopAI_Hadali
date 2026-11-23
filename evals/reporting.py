@@ -44,13 +44,24 @@ def write_report() -> None:
         return
     items = sorted(_RESULTS.values(), key=lambda item: item["id"])
     by_category = Counter(item["category"] for item in items)
+    passed = sum(1 for item in items if item["outcome"] == "passed")
+    slowest = sorted(items, key=lambda item: item["duration_ms"], reverse=True)[:5]
     data = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "total": len(items),
-        "passed": sum(1 for item in items if item["outcome"] == "passed"),
+        "passed": passed,
         "failed": sum(1 for item in items if item["outcome"] == "failed"),
         "skipped": sum(1 for item in items if item["outcome"] == "skipped"),
+        "pass_rate": round(passed * 100 / len(items), 1),
         "by_category": dict(sorted(by_category.items())),
+        "slowest": [
+            {
+                "id": item["id"],
+                "category": item["category"],
+                "duration_ms": item["duration_ms"],
+            }
+            for item in slowest
+        ],
         "cases": items,
     }
     REPORT_DIR.mkdir(parents=True, exist_ok=True)

@@ -26,7 +26,20 @@ uv run pytest evals/test_memory.py -q
 uv run pytest evals/ -q -k routing_game_confide_02
 ```
 
-运行后生成 `evals/reports/latest.json`（已 gitignore）：包含 id、category、outcome、duration_ms、failure，以及按类别汇总。
+默认运行是**确定性回归**：不需要 API Key 与网络，`evals/live` 会被跳过。
+运行后生成 `evals/reports/latest.json`（已 gitignore）：包含 id、category、outcome、duration_ms、failure，
+以及汇总（总数、通过率 `pass_rate`、按类别统计、最慢 5 条 `slowest`）。
+
+### 实时冒烟（按需）
+
+```powershell
+# 需要 .env 中配置 API_KEY；未设置时自动 skip
+$env:RUN_LIVE_EVALS = "1"
+uv run pytest evals/live -m live -q
+```
+
+live 用例只断言结构（回复非空、无情绪标签/时间标记泄漏、emotion 合法），不断言具体措辞；
+报告中以 `category=live` 区分。`bench/` 负责批量性能基准（延迟/工具率），live 只做最小连通性冒烟。
 
 ## 目录
 
@@ -50,6 +63,8 @@ evals/
 ├── test_resilience.py     # M4 容错
 ├── test_stream_contract.py# M5 流式契约
 ├── test_memory.py         # M6 记忆
+├── live/
+│   └── test_live_smoke.py # E3 实时冒烟（RUN_LIVE_EVALS=1）
 └── reports/               # 运行产物（gitignore）
 ```
 
@@ -97,5 +112,11 @@ evals/
 - M4 容错：工具抛异常/返回错误文本时图不中断、ToolMessage 标记 error、最终回复人格化且无技术字样。
 - M5 流式契约：增量拼接等于 `done.reply`，无情绪标签与时间标记，`emotion` 合法（非法回退 neutral）。
 - M6 记忆：跨实例从 JSON 恢复历史，恢复时剥离 tool 中间消息（回归 role=tool 非法请求）。
+- live：真实模型的闲聊 / 时间 / 工具三条冒烟，仅校验结构与过滤契约。
 
-后续阶段补充 `live` 真实模型冒烟（E3）。
+## 新增一类指标
+
+1. 在 `evals/cases/` 新建 `<指标>_cases.py`，用例只放数据（`id / category / description / input / scripted_steps / tools / expect`）；
+2. 在 `evals/test_<指标>.py` 里用 `parametrize` 调 `run_case` + `assert_expect`；
+3. 需要新断言时，在 `evals/runners/graph_runner.py` 的 `assert_expect` 增加字段，并通过 `_fail` 输出期望值；
+4. 同步更新本 README 的断言清单与指标说明。
