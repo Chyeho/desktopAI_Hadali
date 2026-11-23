@@ -17,6 +17,10 @@ uv run pytest evals/ -q
 # 按指标类别
 uv run pytest evals/test_routing.py -q
 uv run pytest evals/test_time_injection.py -q
+uv run pytest evals/test_tool_calls.py -q
+uv run pytest evals/test_resilience.py -q
+uv run pytest evals/test_stream_contract.py -q
+uv run pytest evals/test_memory.py -q
 
 # 单条用例
 uv run pytest evals/ -q -k routing_game_confide_02
@@ -31,10 +35,21 @@ evals/
 ├── conftest.py            # 隔离 MCP、收集报告
 ├── keywords.py            # 游戏拒绝词 / 失败解释词 / 禁用词 / 时间正则
 ├── cases/                 # 声明式用例（每个指标一个文件）
-├── runners/graph_runner.py# 脚本化 LLM + 主图运行 + 统一断言
+│   ├── routing_cases.py   # M2 路由
+│   ├── time_cases.py      # M3 时间
+│   ├── tool_cases.py      # M1 工具
+│   ├── resilience_cases.py# M4 容错
+│   ├── stream_cases.py    # M5 流式契约
+│   ├── memory_cases.py    # M6 记忆
+│   └── tool_defs.py       # 本地假工具（不联网）
+├── runners/graph_runner.py# 脚本化 LLM + 主图运行 + 统一断言 + 记忆用例执行器
 ├── reporting.py           # JSON 报告
 ├── test_routing.py        # M2 路由
 ├── test_time_injection.py # M3 时间注入
+├── test_tool_calls.py     # M1 工具
+├── test_resilience.py     # M4 容错
+├── test_stream_contract.py# M5 流式契约
+├── test_memory.py         # M6 记忆
 └── reports/               # 运行产物（gitignore）
 ```
 
@@ -57,9 +72,15 @@ evals/
 }
 ```
 
-可用断言：`route` / `emotion` / `human_prefix` / `ai_suffix` / `tool_name` /
-`tool_content_contains` / `no_tool` / `no_tool_messages` / `final_contains_any` /
-`forbid_in_final` / `deltas_clean` / `final_clean` / `no_tech_terms`。
+可用断言：`route` / `emotion` / `emotion_valid` / `human_prefix` / `ai_suffix` /
+`tool_name` / `tool_message_count` / `tool_content_contains` / `tool_status_error` /
+`no_tool` / `tool_not_called` / `bound_tools_contain` / `bound_tools_exact` /
+`no_tool_messages` / `final_contains_any` / `forbid_in_final` / `deltas_clean` /
+`deltas_join_equals_reply` / `deltas_no_emotion_tag` / `final_clean` / `no_tech_terms`。
+
+记忆用例（`test_memory.py`）使用 `run_memory_case(case, history_file)`，额外支持：
+`restored_contains_all` / `restored_no_tool_messages` / `restored_no_tool_calls`；
+用例字段为 `first_turns` / `first_steps` / `second_steps`，或用 `seed_history` 直接构造历史文件。
 
 约定：
 
@@ -72,5 +93,9 @@ evals/
 
 - M2 路由：游戏意图进入 `game`，倾诉/模糊提到游戏仍为 `chat`（核心反例必测）。
 - M3 时间：state 前缀/后缀、UI 增量与最终回复无时间标记、时间工具不在白名单且不被调用。
+- M1 工具：注入本地假 `get_weather` / `web_search`，断言 ToolMessage 名称与结果片段，覆盖成功与空结果。
+- M4 容错：工具抛异常/返回错误文本时图不中断、ToolMessage 标记 error、最终回复人格化且无技术字样。
+- M5 流式契约：增量拼接等于 `done.reply`，无情绪标签与时间标记，`emotion` 合法（非法回退 neutral）。
+- M6 记忆：跨实例从 JSON 恢复历史，恢复时剥离 tool 中间消息（回归 role=tool 非法请求）。
 
-后续阶段补充 M1 工具、M4 容错、M5 流式契约、M6 记忆，以及 `live` 真实模型冒烟。
+后续阶段补充 `live` 真实模型冒烟（E3）。
