@@ -4,6 +4,7 @@
 - `Model.*` 只在 Qt 主线程执行（timerEvent / paintGL / 主线程槽）
 - 其它线程（传输线程、TTS 线程）只能通过 `request_play_motion` 信号请求播放动作
 '''
+import random
 import time
 
 import numpy as np            # 数值计算：把 glReadPixels 读回的字节流转成数组分析像素
@@ -14,8 +15,15 @@ from PySide6.QtGui import QCursor, QMouseEvent
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from client.live2d_behavior import (
+    STATE_EMOTION_PLAYING,
+    STATE_EMOTION_RETURNING,
+    STATE_IDLE,
+    STATE_RANDOM_PLAYING,
     denormalize_cursor,
+    next_state_on_motion_end,
     normalize_cursor,
+    pick_random_group,
+    random_interval_seconds,
     smooth_toward,
 )
 from utils.logger_handler import logger
@@ -59,10 +67,14 @@ class Live2DWidget(QOpenGLWidget):
         self.is_in_la = False
         self.setMinimumSize(200, 250)
         self.resize(400, 500)
-        # 情感表情动画状态
-        self._emotion_motion_playing = False   # 情感动作播放中（播完由 timerEvent 检测）
+        # 动作状态机与表情回归过渡
+        self._motion_state = STATE_IDLE         # 当前动作状态（见 STATE_* 常量）
         self._return_transition = None          # 回常态过渡 {from, to, t, duration}
         self._last_frame_time = time.perf_counter()
+        # 空闲随机动作调度
+        self._rng = random.Random()
+        self._random_due_at = None              # 下次随机动作的触发时刻（monotonic）
+        self._last_random_group = None          # 上次随机动作组，避免连续重复
         # 鼠标跟随：平滑后的归一化坐标（[-1,1]，中心为 0）
         self._drag_x = 0.0
         self._drag_y = 0.0
@@ -86,6 +98,7 @@ class Live2DWidget(QOpenGLWidget):
             pass
         # 以 fps = 120 的频率进行绘图（每帧触发 timerEvent → update() → paintGL）
         self.startTimer(int(1000 / 120))
+        self._schedule_random_motion()
 
     def resizeGL(self, w, h):
         """窗口大小变化时：更新画布，并保持缩放比例与居中偏移"""
@@ -176,25 +189,67 @@ class Live2DWidget(QOpenGLWidget):
             except Exception:
                 pass
             self.motion_started = True
-        # 情感动作播放结束后，启动平滑过渡回常态
-        if (self._emotion_motion_playing and self.model
-                and self.model.IsMotionFinished()):
-            self._emotion_motion_playing = False
-            self._start_return_to_neutral(NEUTRAL_RETURN_DURATION)
+        self._update_motion_state()
         self._update_cursor_drag()
         widget_pos = self.mapFromGlobal(QCursor.pos())
         self.is_in_la = self.is_in_l2d_area(int(widget_pos.x()), int(widget_pos.y()))
         self.update()
 
+    # ---------- 动作状态机（空闲随机动作 / 表情优先） ----------
+    def _update_motion_state(self) -> None:
+        """推进动作状态机：动作结束后回归空闲，空闲到点触发随机动作"""
+        if self.model is None:
+            return
+        if (self._motion_state == STATE_EMOTION_PLAYING
+                and self.model.IsMotionFinished()):
+            # 表情动作结束 → 平滑过渡回常态
+            self._motion_state = next_state_on_motion_end(self._motion_state)
+            self._start_return_to_neutral(NEUTRAL_RETURN_DURATION)
+        elif (self._motion_state == STATE_RANDOM_PLAYING
+                and self.model.IsMotionFinished()):
+            self._motion_state = next_state_on_motion_end(self._motion_state)
+            self._schedule_random_motion()
+        elif self._motion_state == STATE_IDLE and self._random_due_at is not None:
+            if time.monotonic() >= self._random_due_at:
+                self._play_random_motion()
+
+    def _play_random_motion(self) -> None:
+        """空闲到点：随机选择一个动作组播放（NORMAL 优先级，可被表情覆盖）"""
+        group = pick_random_group(
+            self._available_motion_groups(), self._rng, exclude=self._last_random_group,
+        )
+        if group is None:
+            self._schedule_random_motion()
+            return
+        try:
+            self.model.StartRandomMotion(group, live2d.MotionPriority.NORMAL)
+        except Exception as e:
+            logger.warning(f"[Live2DWidget]随机动作播放失败 {group}：{e}")
+            self._schedule_random_motion()
+            return
+        self._last_random_group = group
+        self._motion_state = STATE_RANDOM_PLAYING
+
+    def _schedule_random_motion(self) -> None:
+        """安排下一次空闲随机动作的触发时刻"""
+        self._random_due_at = time.monotonic() + random_interval_seconds(self._rng)
+
+    def _available_motion_groups(self) -> list:
+        """模型实际提供的动作组（GetMotionGroups 的键），失败时返回空列表"""
+        try:
+            return list(self.model.GetMotionGroups().keys())
+        except Exception:
+            return []
+
     def _update_cursor_drag(self) -> None:
         """每帧让头部/眼睛平滑朝向鼠标（在 Update 前调用）
 
-        情绪动作与回归过渡期间暂停跟随，避免动作角度被 Drag 覆盖；
+        表情动作与回归过渡期间暂停跟随，避免动作角度被 Drag 覆盖；
         过渡结束后从上次的平滑值继续收敛，不会跳变。
         """
         if self.model is None:
             return
-        if self._emotion_motion_playing or self._return_transition is not None:
+        if self._motion_state in (STATE_EMOTION_PLAYING, STATE_EMOTION_RETURNING):
             return
         w, h = self.width(), self.height()
         if w <= 0 or h <= 0:
@@ -212,11 +267,12 @@ class Live2DWidget(QOpenGLWidget):
 
     # ---------- 情感表情动画驱动（主线程槽） ----------
     def _do_play_emotion_motion(self, group: str) -> None:
-        """播放指定动作组；动作结束后由 timerEvent 检测并启动回常态过渡"""
+        """播放指定动作组（FORCE 优先级，覆盖随机动作）；播完由状态机接管"""
         if self.model is None:
             return
         self._return_transition = None
-        self._emotion_motion_playing = True
+        self._random_due_at = None          # 取消待触发的随机动作
+        self._motion_state = STATE_EMOTION_PLAYING
         try:
             self.model.SetAutoBlinkEnable(False)
             self.model.SetAutoBreathEnable(False)
@@ -226,13 +282,14 @@ class Live2DWidget(QOpenGLWidget):
             self.model.StartMotion(group, 0, live2d.MotionPriority.FORCE)
         except Exception as e:
             logger.warning(f"[Live2DWidget]表情动作播放失败 {group}：{e}")
-            self._emotion_motion_playing = False
+            self._motion_state = STATE_IDLE
             self._restore_auto_anim()
+            self._schedule_random_motion()
 
     def reset_emotion(self) -> None:
         """打断时立刻回到常态：停止当前动作、取消回常态过渡并恢复自动眨眼/呼吸"""
         self._return_transition = None
-        self._emotion_motion_playing = False
+        self._motion_state = STATE_IDLE
         if self.model is not None:
             stop_all = getattr(self.model, "StopAllMotions", None)
             if stop_all is not None:
@@ -241,6 +298,7 @@ class Live2DWidget(QOpenGLWidget):
                 except Exception:
                     pass
         self._restore_auto_anim()
+        self._schedule_random_motion()
 
     def _start_return_to_neutral(self, duration: float) -> None:
         """启动平滑过渡：所有参数从当前值回到 default（常态）"""
@@ -277,6 +335,9 @@ class Live2DWidget(QOpenGLWidget):
         if p >= 1.0:
             self._return_transition = None
             self._restore_auto_anim()
+            # 回归完成 → 空闲，并重新计时随机动作
+            self._motion_state = STATE_IDLE
+            self._schedule_random_motion()
 
     def _restore_auto_anim(self) -> None:
         """恢复自动眨眼/呼吸（常态待机需要）"""

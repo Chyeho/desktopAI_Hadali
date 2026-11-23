@@ -11,6 +11,16 @@ import random
 CURSOR_MIN = -1.0
 CURSOR_MAX = 1.0
 
+# 空闲随机动作的触发间隔范围（秒）
+RANDOM_INTERVAL_MIN = 8.0
+RANDOM_INTERVAL_MAX = 15.0
+
+# 动作状态机状态：空闲 / 随机动作播放中 / 表情动作播放中 / 表情回归过渡中
+STATE_IDLE = "idle"
+STATE_RANDOM_PLAYING = "random_playing"
+STATE_EMOTION_PLAYING = "emotion_playing"
+STATE_EMOTION_RETURNING = "emotion_returning"
+
 
 def clamp(value: float, low: float = CURSOR_MIN, high: float = CURSOR_MAX) -> float:
     '''把数值限制在 [low, high] 区间'''
@@ -70,3 +80,26 @@ def pick_random_group(groups, rng=None, exclude=None):
         return None
     candidates = [g for g in all_groups if g != exclude] or all_groups
     return (rng or random).choice(candidates)
+
+
+def random_interval_seconds(rng=None,
+                            low: float = RANDOM_INTERVAL_MIN,
+                            high: float = RANDOM_INTERVAL_MAX) -> float:
+    '''返回 [low, high] 区间内的随机间隔（秒）
+
+    low > high 时自动交换，保证返回值始终落在合法区间。
+    '''
+    lo, hi = (low, high) if low <= high else (high, low)
+    return (rng or random).uniform(lo, hi)
+
+
+def next_state_on_motion_end(state: str) -> str:
+    '''动作播放结束时的状态迁移
+
+    表情动作 → 回归过渡；随机动作 → 空闲；其余保持不变。
+    '''
+    if state == STATE_EMOTION_PLAYING:
+        return STATE_EMOTION_RETURNING
+    if state == STATE_RANDOM_PLAYING:
+        return STATE_IDLE
+    return state
