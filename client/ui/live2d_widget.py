@@ -13,6 +13,11 @@ from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QCursor, QMouseEvent
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
+from client.live2d_behavior import (
+    denormalize_cursor,
+    normalize_cursor,
+    smooth_toward,
+)
 from utils.logger_handler import logger
 from utils.path_tool import get_abs_path
 
@@ -21,6 +26,9 @@ MODEL_PATH = get_abs_path("Resources/v3/hiyori/hiyori_free_t08.model3.json")
 
 # 表情动作播放结束后，参数平滑过渡回常态的时长（秒）
 NEUTRAL_RETURN_DURATION = 1.5
+
+# 鼠标跟随的逐帧平滑系数（0~1，越大越跟手；120fps 下 0.25 约 90ms 收敛）
+CURSOR_SMOOTH_FACTOR = 0.25
 
 
 class Live2DWidget(QOpenGLWidget):
@@ -55,6 +63,11 @@ class Live2DWidget(QOpenGLWidget):
         self._emotion_motion_playing = False   # 情感动作播放中（播完由 timerEvent 检测）
         self._return_transition = None          # 回常态过渡 {from, to, t, duration}
         self._last_frame_time = time.perf_counter()
+        # 鼠标跟随：平滑后的归一化坐标（[-1,1]，中心为 0）
+        self._drag_x = 0.0
+        self._drag_y = 0.0
+        # 允许非按下状态也收到 mouseMoveEvent（跟随仍以每帧读取光标为准）
+        self.setMouseTracking(True)
         # 跨线程信号→主线程槽：播放表情动作组（避免子线程操作 OpenGL）
         self.request_play_motion.connect(self._do_play_emotion_motion)
 
@@ -157,8 +170,9 @@ class Live2DWidget(QOpenGLWidget):
         if not self.isVisible():
             return
         if not self.motion_started and self.model:
+            # 启动时播放一次常态动作（组名必须与模型 motion 组一致）
             try:
-                self.model.StartMotion("TapBody", 0, live2d.MotionPriority.FORCE)
+                self.model.StartMotion("Idle", 0, live2d.MotionPriority.NORMAL)
             except Exception:
                 pass
             self.motion_started = True
@@ -167,9 +181,34 @@ class Live2DWidget(QOpenGLWidget):
                 and self.model.IsMotionFinished()):
             self._emotion_motion_playing = False
             self._start_return_to_neutral(NEUTRAL_RETURN_DURATION)
+        self._update_cursor_drag()
         widget_pos = self.mapFromGlobal(QCursor.pos())
         self.is_in_la = self.is_in_l2d_area(int(widget_pos.x()), int(widget_pos.y()))
         self.update()
+
+    def _update_cursor_drag(self) -> None:
+        """每帧让头部/眼睛平滑朝向鼠标（在 Update 前调用）
+
+        情绪动作与回归过渡期间暂停跟随，避免动作角度被 Drag 覆盖；
+        过渡结束后从上次的平滑值继续收敛，不会跳变。
+        """
+        if self.model is None:
+            return
+        if self._emotion_motion_playing or self._return_transition is not None:
+            return
+        w, h = self.width(), self.height()
+        if w <= 0 or h <= 0:
+            return
+        pos = self.mapFromGlobal(QCursor.pos())
+        target_x, target_y = normalize_cursor(pos.x(), pos.y(), w, h)
+        self._drag_x = smooth_toward(self._drag_x, target_x, CURSOR_SMOOTH_FACTOR)
+        self._drag_y = smooth_toward(self._drag_y, target_y, CURSOR_SMOOTH_FACTOR)
+        # model.Drag 接收与 Resize 一致的部件像素坐标
+        px, py = denormalize_cursor(self._drag_x, self._drag_y, w, h)
+        try:
+            self.model.Drag(px, py)
+        except Exception:
+            pass
 
     # ---------- 情感表情动画驱动（主线程槽） ----------
     def _do_play_emotion_motion(self, group: str) -> None:
