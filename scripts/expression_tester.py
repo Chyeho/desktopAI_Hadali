@@ -5,12 +5,18 @@ Live2D 表情 / 动作 调试台（独立运行）
      把满意的一组参数保存为"神态预设"以便后续接入 client/ui。
 
 运行：
-    python expression_tester.py
+    python scripts/expression_tester.py
 
-不依赖 API Key / chatbot 模块，仅依赖 live2d-py + PySide6（已在 .venv 中）。
+不依赖 API Key / backend 模块，仅依赖 live2d-py + PySide6（已在 .venv 中）。
 """
 import json
 import os
+import sys
+
+# 直接以脚本方式运行时，把项目根目录加入模块搜索路径（供 utils 导入）
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
 
 import numpy as np                # 读像素计算模型包围盒（自适应缩放居中）
 import OpenGL.GL as gl
@@ -24,16 +30,13 @@ from PySide6.QtWidgets import (
     QScrollArea, QSlider, QVBoxLayout, QWidget, QMessageBox,
 )
 
+from utils.path_tool import get_abs_path
+
 # 模型路径（与 client/ui/live2d_widget.MODEL_PATH 保持一致）
-MODEL_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "Resources", "v3", "hiyori", "hiyori_free_t08.model3.json",
-)
+MODEL_PATH = get_abs_path("Resources/v3/hiyori/hiyori_free_t08.model3.json")
 
 # 预设保存文件（项目根目录）
-PRESETS_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "expression_presets.json"
-)
+PRESETS_FILE = get_abs_path("expression_presets.json")
 
 # 面部表情参数（id, 中文标签）
 FACE_PARAMS = [

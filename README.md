@@ -40,8 +40,7 @@
 - `evals/`               行为评测（确定性回归 + 可选 live 冒烟）
 - `bench/`               真实模型性能基准（延迟 / 工具率，需 API Key 与网络）
 - `docs/`                技术文档、前后端接口 JSON 契约、开发文档
-- `expression_tester.py` Live2D 表情动画调试台（独立运行）
-- `resources.py`         资源目录常量
+- `scripts/`             开发辅助脚本（`expression_tester.py` Live2D 表情调试台）
 - `Resources/`           Live2D 模型资源（HiYori 模型 + 动作）
 
 ## 运行指南

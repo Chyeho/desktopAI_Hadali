@@ -99,8 +99,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 - `chatbotUI.py` — 依赖 PySide6 + OpenGL + Live2D 运行时，属 UI 层，适合手动 / E2E 测试
 - `client/ui/` — 聊天框增量显示与窗口事件处理，随 UI 手工验收
 - `main.py` — 程序入口，整合 GUI 启动
-- `expression_tester.py` — Live2D 表情调试台，需 GUI
-- `resources.py` — 仅路径常量，无逻辑分支
+- `scripts/expression_tester.py` — Live2D 表情调试台，需 GUI
 
 ## 测试结果
 
