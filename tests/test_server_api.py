@@ -8,7 +8,7 @@ import json
 
 import httpx
 
-from server.app import create_app
+from backend.api.app import create_app
 
 
 def _result(**overrides):

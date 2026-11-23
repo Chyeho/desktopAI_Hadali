@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from modelFactory.factory import BaseModelFactory, ChatModelFactory, EmbeddingModelFactory
+from backend.model_factory.factory import BaseModelFactory, ChatModelFactory, EmbeddingModelFactory
 
 
 class TestBaseModelFactory:
@@ -33,7 +33,7 @@ class TestChatModelFactory:
 
     def test_generator_returns_chatopenai(self):
         """mock ChatOpenAI，验证工厂生产逻辑"""
-        with patch("modelFactory.factory.ChatOpenAI") as mock_chatopenai:
+        with patch("backend.model_factory.factory.ChatOpenAI") as mock_chatopenai:
             mock_instance = MagicMock()
             mock_chatopenai.return_value = mock_instance
 
@@ -51,7 +51,7 @@ class TestChatModelFactory:
 
     def test_generator_no_extra_params(self):
         """不传生成参数时只传连接参数"""
-        with patch("modelFactory.factory.ChatOpenAI") as mock_chatopenai:
+        with patch("backend.model_factory.factory.ChatOpenAI") as mock_chatopenai:
             factory = ChatModelFactory(api_key="sk-x", base_url="http://api", model="m")
             factory.generator()
             mock_chatopenai.assert_called_once_with(
@@ -59,7 +59,7 @@ class TestChatModelFactory:
             )
 
     def test_generator_passes_arbitrary_params(self):
-        with patch("modelFactory.factory.ChatOpenAI") as mock_chatopenai:
+        with patch("backend.model_factory.factory.ChatOpenAI") as mock_chatopenai:
             factory = ChatModelFactory(api_key="sk-x", base_url="http://api", model="m")
             factory.generator(top_p=0.9, presence_penalty=0.5)
             _, kwargs = mock_chatopenai.call_args

@@ -17,12 +17,12 @@ import time
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from modelFactory.factory import ChatModelFactory
-from agent.history import HistoryStore
-from agent.tool_manager import ToolManager
-from agent.turn import ToolCallRecord, TurnResult
-from agent.mode_configs import DEFAULT_MODE, MODE_REGISTRY
-from agent.expression_driver import validate_emotion
+from backend.model_factory.factory import ChatModelFactory
+from backend.agent.history import HistoryStore
+from backend.agent.tool_manager import ToolManager
+from backend.agent.turn import ToolCallRecord, TurnResult
+from backend.agent.mode_configs import DEFAULT_MODE, MODE_REGISTRY
+from backend.agent.expression_driver import validate_emotion
 from utils.prompt_loader import load_prompt
 from utils.logger_handler import logger
 

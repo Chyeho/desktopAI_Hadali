@@ -9,8 +9,8 @@ from typing import Any
 from langchain_core.messages import BaseMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
-from agent.graph.agent_node import finalize_reply, invoke_llm, to_ai_message
-from agent.graph.state import AgentState
+from backend.agent.graph.agent_node import finalize_reply, invoke_llm, to_ai_message
+from backend.agent.graph.state import AgentState
 from utils.time_utils import DEFAULT_TIME_FORMAT
 
 # 游戏占位节点的系统提示词：不承诺实现，只做陪伴式说明

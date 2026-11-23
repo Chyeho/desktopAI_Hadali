@@ -5,8 +5,8 @@ import json
 import pytest
 from langchain_core.tools import tool
 
-from agent.graph import tooling
-from agent.graph.tooling import (
+from backend.agent.graph import tooling
+from backend.agent.graph.tooling import (
     BASE_TOOL_NAMES,
     OFFICE_TOOLS,
     _read_mcp_connections,

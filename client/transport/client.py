@@ -17,7 +17,7 @@ import httpx
 from httpx_sse import connect_sse
 from PySide6.QtCore import QObject, QThread, Signal
 
-from protocol.events import EVENT_MODEL_MAP
+from backend.protocol.events import EVENT_MODEL_MAP
 from utils.logger_handler import logger
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8765"

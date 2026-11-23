@@ -7,7 +7,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from protocol.events import (
+from backend.protocol.events import (
     EVENT_MODEL_MAP,
     EmotionEvent,
     ErrorEvent,
@@ -20,7 +20,7 @@ from protocol.events import (
     TurnEndEvent,
     TurnStartEvent,
 )
-from protocol.requests import ChatRequest, InterruptRequest, ModeRequest
+from backend.protocol.requests import ChatRequest, InterruptRequest, ModeRequest
 
 
 class TestChatRequest:

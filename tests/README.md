@@ -86,7 +86,7 @@ uv run pytest tests/ --cov --cov-report=term-missing
 
 | 外部依赖 | Mock 方式 |
 | --- | --- |
-| 大模型（ChatOpenAI） | `test_chat_agent.py` 用 `_FakeFactory` + `MagicMock`；`test_graph_flow.py` 用 `_FakeLLM` / `GenericFakeChatModel`；`test_factory.py` 用 `patch("modelFactory.factory.ChatOpenAI")` |
+| 大模型（ChatOpenAI） | `test_chat_agent.py` 用 `_FakeFactory` + `MagicMock`；`test_graph_flow.py` 用 `_FakeLLM` / `GenericFakeChatModel`；`test_factory.py` 用 `patch("backend.model_factory.factory.ChatOpenAI")` |
 | 网络请求（urllib） | `test_weather.py` / `test_web_search.py` 用 `patch("urllib.request.urlopen")` 返回构造的假响应 |
 | MCP 客户端 | `test_graph_tooling.py` 用假客户端替换 `MultiServerMCPClient`，覆盖正常返回、构造异常、适配器缺失 |
 | Live2D Widget | `test_expression_driver.py` 用 `MagicMock()` 模拟 `request_play_motion.emit` 信号 |

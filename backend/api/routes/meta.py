@@ -1,9 +1,9 @@
 '''元信息路由：GET /v1/health、GET /v1/modes、POST /v1/mode'''
 from fastapi import APIRouter, Depends, HTTPException
 
-from protocol.requests import ModeRequest
-from server.security import verify_token
-from server.services import SERVER_VERSION, Services, get_services
+from backend.protocol.requests import ModeRequest
+from backend.api.security import verify_token
+from backend.api.services import SERVER_VERSION, Services, get_services
 
 router = APIRouter(prefix="/v1", dependencies=[Depends(verify_token)])
 

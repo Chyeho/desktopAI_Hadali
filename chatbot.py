@@ -12,9 +12,9 @@ P1 过渡说明：本模块是 core 层之上的**兼容适配器**，保留模�
 本适配器仅为兼容保留（tests/test_chatbot.py 依赖其模块级全局）。
 live2d 表情动画改由 client/emotion_map.py 承担（按需懒加载，避免 core 依赖 UI）。
 """
-from modelFactory.factory import ChatModelFactory
-from agent.chat_agent import ChatAgent
-from core import facade
+from backend.model_factory.factory import ChatModelFactory
+from backend.agent.chat_agent import ChatAgent
+from backend.core import facade
 from utils.logger_handler import logger
 
 # 全局对话 Agent（由 init_api_key_from_env 初始化）

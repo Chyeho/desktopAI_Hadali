@@ -11,11 +11,11 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from agent.graph.agent_node import AgentNode
-from agent.graph.game_subgraph import build_game_subgraph
-from agent.graph.perception import perception_node
-from agent.graph.state import AgentState
-from agent.graph.tooling import get_agent_tools
+from backend.agent.graph.agent_node import AgentNode
+from backend.agent.graph.game_subgraph import build_game_subgraph
+from backend.agent.graph.perception import perception_node
+from backend.agent.graph.state import AgentState
+from backend.agent.graph.tooling import get_agent_tools
 from utils.time_utils import DEFAULT_TIME_FORMAT
 
 

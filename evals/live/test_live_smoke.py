@@ -12,8 +12,8 @@ import uuid
 
 import pytest
 
-from agent.expression_driver import VALID_EMOTIONS
-from core.facade import create_agent_from_env
+from backend.agent.expression_driver import VALID_EMOTIONS
+from backend.core.facade import create_agent_from_env
 from evals.keywords import TIME_MARKER_RE
 from utils.env_utils import load_env
 from utils.path_tool import get_abs_path

@@ -10,12 +10,12 @@ client 由自身保存 agent 引用与部分回复状态（P1 过渡期见根 ch
 '''
 import os
 
-from agent.chat_agent import ChatAgent
-from agent.turn import TurnResult
-from agent.graph.config import GRAPH_MODEL_PARAMS
-from agent.graph.runner import CompanionGraphAgent
-from agent.tool_manager import ToolManager
-from modelFactory.factory import ChatModelFactory
+from backend.agent.chat_agent import ChatAgent
+from backend.agent.turn import TurnResult
+from backend.agent.graph.config import GRAPH_MODEL_PARAMS
+from backend.agent.graph.runner import CompanionGraphAgent
+from backend.agent.tool_manager import ToolManager
+from backend.model_factory.factory import ChatModelFactory
 from utils.env_utils import load_env
 from utils.path_tool import get_abs_path
 

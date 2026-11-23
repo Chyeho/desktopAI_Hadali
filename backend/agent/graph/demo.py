@@ -5,9 +5,9 @@
 
 读取 .env 中的 API_KEY / BASE_URL / MODEL，进入多轮对话；输入 exit / quit 退出。
 '''
-from core.facade import DEFAULT_BASE_URL, DEFAULT_MODEL, load_env
-from modelFactory.factory import ChatModelFactory
-from agent.graph.runner import CompanionGraphAgent
+from backend.core.facade import DEFAULT_BASE_URL, DEFAULT_MODEL, load_env
+from backend.model_factory.factory import ChatModelFactory
+from backend.agent.graph.runner import CompanionGraphAgent
 from utils.path_tool import get_abs_path
 
 

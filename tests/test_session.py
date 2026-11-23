@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from core.session import SessionManager
+from backend.core.session import SessionManager
 
 
 class _FakeAgent:

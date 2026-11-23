@@ -7,8 +7,8 @@
 '''
 from langchain_core.tools import BaseTool
 
-from tools.common.weather import get_weather
-from tools.common.web_search import web_search
+from backend.agent.tools.weather import get_weather
+from backend.agent.tools.web_search import web_search
 from utils.logger_handler import logger
 
 # 全量工具注册表：工具名（@tool 函数名）→ langchain BaseTool

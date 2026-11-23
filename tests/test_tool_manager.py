@@ -2,7 +2,7 @@
 
 覆盖 ALL_TOOLS 注册表与 ToolManager 的白名单过滤逻辑。
 """
-from agent.tool_manager import ALL_TOOLS, ToolManager
+from backend.agent.tool_manager import ALL_TOOLS, ToolManager
 
 
 class TestAllTools:

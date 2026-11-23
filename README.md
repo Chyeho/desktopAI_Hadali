@@ -169,7 +169,7 @@ DASHSCOPE_VOICE=音色ID
    也可分开启动，便于查看后端日志或多客户端接入：
 
    ```powershell
-   uv run python -m server --port 8765
+   uv run python -m backend --port 8765
    uv run python main.py --server-url http://127.0.0.1:8765 --no-spawn
    ```
 

@@ -1,4 +1,4 @@
-'''命令行入口：python -m server [--host 127.0.0.1] [--port 8765]
+'''命令行入口：python -m backend [--host 127.0.0.1] [--port 8765]
 
 `--port 0` 时随机端口，并在 stdout 输出一行
 `HADALI_SERVER_READY {"port": <N>}` 供 client launcher 解析。
@@ -9,12 +9,12 @@ import json
 
 import uvicorn
 
-from server.app import create_app
+from backend.api.app import create_app
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="server", description="Hadali 对话后端（FastAPI + SSE）"
+        prog="backend", description="Hadali 对话后端（FastAPI + SSE）"
     )
     parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认仅本机）")
     parser.add_argument("--port", type=int, default=8765, help="监听端口；0 表示随机端口")

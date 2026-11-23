@@ -15,9 +15,9 @@ from langchain_core.messages import (
     SystemMessage,
 )
 
-from agent.graph.emotion import parse_emotion_tag
-from agent.graph.state import AgentState
-from agent.graph.tooling import get_agent_tools, select_tools_for
+from backend.agent.graph.emotion import parse_emotion_tag
+from backend.agent.graph.state import AgentState
+from backend.agent.graph.tooling import get_agent_tools, select_tools_for
 from utils.logger_handler import logger
 from utils.prompt_loader import load_graph_prompt
 from utils.time_utils import (

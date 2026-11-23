@@ -2,7 +2,7 @@
 
 覆盖 MODE_REGISTRY 结构、DEFAULT_MODE、各模式配置字段完整性。
 """
-from agent.mode_configs import DEFAULT_MODE, MODE_REGISTRY
+from backend.agent.mode_configs import DEFAULT_MODE, MODE_REGISTRY
 
 
 class TestModeRegistry:

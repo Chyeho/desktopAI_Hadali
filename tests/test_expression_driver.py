@@ -4,7 +4,7 @@
 """
 from unittest.mock import MagicMock
 
-from agent.expression_driver import VALID_EMOTIONS
+from backend.agent.expression_driver import VALID_EMOTIONS
 from client.emotion_map import EMOTION_MOTION_MAP, drive_expression
 
 

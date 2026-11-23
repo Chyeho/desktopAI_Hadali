@@ -5,8 +5,8 @@
 2. 在下方 import 并注册进 MODE_REGISTRY；
 3. （可选）在 tools/<mode>/ 下实现该模式独有工具。
 '''
-from agent.mode_configs.emotion_mode import MODE_CONFIG as EMOTION_MODE
-from agent.mode_configs.office_mode import MODE_CONFIG as OFFICE_MODE
+from backend.agent.mode_configs.emotion_mode import MODE_CONFIG as EMOTION_MODE
+from backend.agent.mode_configs.office_mode import MODE_CONFIG as OFFICE_MODE
 
 # 模式名 → 模式配置
 MODE_REGISTRY = {

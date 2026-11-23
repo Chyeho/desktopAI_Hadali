@@ -7,8 +7,8 @@ import uuid
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from core.tracing import TurnTracer
-from protocol.events import (
+from backend.core.tracing import TurnTracer
+from backend.protocol.events import (
     BaseEvent,
     EmotionEvent,
     ErrorCode,
@@ -23,9 +23,9 @@ from protocol.events import (
     TurnEndEvent,
     TurnStartEvent,
 )
-from protocol.requests import ChatRequest, InterruptRequest
-from server.security import verify_token
-from server.services import Services, get_services
+from backend.protocol.requests import ChatRequest, InterruptRequest
+from backend.api.security import verify_token
+from backend.api.services import Services, get_services
 
 router = APIRouter(prefix="/v1", dependencies=[Depends(verify_token)])
 

@@ -6,8 +6,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from server.routes import chat, meta
-from server.services import SERVER_VERSION, Services
+from backend.api.routes import chat, meta
+from backend.api.services import SERVER_VERSION, Services
 
 
 def create_app(services: Services = None) -> FastAPI:

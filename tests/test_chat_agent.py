@@ -19,8 +19,8 @@ from langchain_core.messages import (
 )
 from langchain_core.tools import tool
 
-from agent.chat_agent import MAX_TOOL_STEPS, ChatAgent, parse_reply_json
-from agent.history import HISTORY_WINDOW, HistoryStore
+from backend.agent.chat_agent import MAX_TOOL_STEPS, ChatAgent, parse_reply_json
+from backend.agent.history import HISTORY_WINDOW, HistoryStore
 
 
 # =====================================================================
@@ -317,7 +317,7 @@ def patched_history(tmp_path, monkeypatch):
         def __init__(self, file_path=None):
             super().__init__(file_path=temp_file)
 
-    monkeypatch.setattr("agent.chat_agent.HistoryStore", _TempHistoryStore)
+    monkeypatch.setattr("backend.agent.chat_agent.HistoryStore", _TempHistoryStore)
     return temp_file
 
 

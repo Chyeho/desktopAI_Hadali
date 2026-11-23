@@ -1,5 +1,5 @@
 """单元测试：情绪标签解析与流式过滤 agent/graph/emotion.py"""
-from agent.graph.emotion import EmotionStreamFilter, parse_emotion_tag
+from backend.agent.graph.emotion import EmotionStreamFilter, parse_emotion_tag
 
 
 class TestParseEmotionTag:

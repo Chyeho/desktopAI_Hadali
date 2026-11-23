@@ -6,7 +6,7 @@
 """
 from unittest.mock import MagicMock, patch
 
-from tools.common.web_search import _strip_tags, web_search
+from backend.agent.tools.web_search import _strip_tags, web_search
 
 
 class TestStripTags:

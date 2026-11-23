@@ -2,7 +2,7 @@
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph.message import add_messages
 
-from agent.graph.state import AgentState
+from backend.agent.graph.state import AgentState
 
 
 class TestAgentState:

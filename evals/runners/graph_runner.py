@@ -17,11 +17,11 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from agent.history import HistoryStore
-from agent.expression_driver import VALID_EMOTIONS
-from agent.graph.emotion import parse_emotion_tag
-from agent.graph.main_graph import build_main_graph
-from agent.graph.runner import CompanionGraphAgent
+from backend.agent.history import HistoryStore
+from backend.agent.expression_driver import VALID_EMOTIONS
+from backend.agent.graph.emotion import parse_emotion_tag
+from backend.agent.graph.main_graph import build_main_graph
+from backend.agent.graph.runner import CompanionGraphAgent
 from evals.keywords import (
     FORBIDDEN_TECH_TERMS,
     TIME_MARKER_RE,
@@ -100,7 +100,7 @@ def _first_human(messages: list[BaseMessage]) -> HumanMessage | None:
 
 def _resolve_tools(case: dict) -> list:
     if case.get("use_agent_tools"):
-        from agent.graph.tooling import get_agent_tools
+        from backend.agent.graph.tooling import get_agent_tools
         return get_agent_tools()
     return list(case.get("tools") or [])
 

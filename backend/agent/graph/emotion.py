@@ -10,7 +10,7 @@
 '''
 import re
 
-from agent.expression_driver import validate_emotion
+from backend.agent.expression_driver import validate_emotion
 
 # 开头情绪标签：[emotion:happy] / [emotion=happy]，允许前后空白
 EMOTION_TAG_RE = re.compile(r"^\s*\[emotion\s*[:=]\s*([A-Za-z_]+)\s*\]\s*")

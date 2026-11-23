@@ -1,8 +1,8 @@
 """单元测试：陪伴主图感知门控 agent/graph/perception.py"""
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent.graph import perception
-from agent.graph.perception import (
+from backend.agent.graph import perception
+from backend.agent.graph.perception import (
     CHAT_ROUTE,
     GAME_CONFIDENCE_THRESHOLD,
     GAME_ROUTE,

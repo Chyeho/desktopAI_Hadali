@@ -9,9 +9,9 @@ import os
 import re
 import threading
 
-from agent.chat_agent import ChatAgent
-from agent.history import HISTORY_DIR
-from core import facade
+from backend.agent.chat_agent import ChatAgent
+from backend.agent.history import HISTORY_DIR
+from backend.core import facade
 
 SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 

@@ -8,9 +8,9 @@
 import pytest
 from langchain_core.messages import AIMessage
 
-from agent.chat_agent import ChatAgent
-from agent.graph.runner import CompanionGraphAgent
-from core import facade
+from backend.agent.chat_agent import ChatAgent
+from backend.agent.graph.runner import CompanionGraphAgent
+from backend.core import facade
 
 
 class _FakeLLM:
