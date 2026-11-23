@@ -25,6 +25,7 @@ coverage.xml
 
 # 运行时生成文件
 screenshot.png
+.screenshots
 *.log
 logs/
 
@@ -55,9 +56,6 @@ live2dmascot/
 # 评测需求参考文档（仅本地参考，禁止提交）
 agent评测体系说明文档.md
 
-# 计划与开发记录（仅本地保留，禁止提交）
-docs/development_docs/3_评测与重构/agent评测与项目重构执行文档.md
-docs/development_docs/3_评测与重构/agent评测与项目重构开发记录.md
 
 # 评测运行产物
 evals/reports/
