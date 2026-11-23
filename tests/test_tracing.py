@@ -4,7 +4,7 @@
 """
 import json
 
-from core.tracing import SUMMARY_MAX_LEN, TurnTracer
+from backend.core.tracing import SUMMARY_MAX_LEN, TurnTracer
 
 
 def _result(**overrides):

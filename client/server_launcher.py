@@ -3,7 +3,7 @@
 启动顺序（全部在 QThread 中执行，不阻塞主线程）：
 1. 带 token 探活 → 成功则复用现有后端；
 2. 不带 token 再探一次 → 兼容手工启动的调试后端；
-3. 都失败则用 `python -m server` 拉起子进程（`HADALI_TOKEN` 经环境变量传入）；
+3. 都失败则用 `python -m backend` 拉起子进程（`HADALI_TOKEN` 经环境变量传入）；
 4. 轮询 `/v1/health` 直到就绪或超时。
 
 失败只发 `failed` 信号，绝不 `sys.exit`：窗口必须保持可见。
@@ -122,7 +122,7 @@ class _LaunchWorker(QThread):
 
         env = os.environ.copy()
         env["HADALI_TOKEN"] = self.token
-        cmd = [sys.executable, "-m", "server", "--host", host, "--port", str(port)]
+        cmd = [sys.executable, "-m", "backend", "--host", host, "--port", str(port)]
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
             self.proc = subprocess.Popen(

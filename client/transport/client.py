@@ -17,7 +17,7 @@ import httpx
 from httpx_sse import connect_sse
 from PySide6.QtCore import QObject, QThread, Signal
 
-from protocol.events import EVENT_MODEL_MAP
+from backend.protocol.events import EVENT_MODEL_MAP
 from utils.logger_handler import logger
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8765"
@@ -62,7 +62,7 @@ class Transport(QObject):
     event_received = Signal(str, dict)   # (事件名, 载荷)
     failed = Signal(str)                 # 连接/协议错误（面向用户的中文提示）
 
-    def send(self, text: str, session_id: str = "default", mode: str | None = None) -> None:
+    def send(self, text: str, session_id: str = "default") -> None:
         raise NotImplementedError
 
     def interrupt(self, session_id: str = "default") -> None:
@@ -240,14 +240,13 @@ class SseTransport(Transport):
             worker = self._worker
         return worker is not None and worker.isRunning()
 
-    def send(self, text: str, session_id: str | None = None,
-             mode: str | None = None) -> None:
+    def send(self, text: str, session_id: str | None = None) -> None:
         """发起一轮对话（非阻塞）；上一轮未结束时拒绝并发出 failed 信号"""
         if self.is_busy():
             self.failed.emit("上一轮回复尚未结束，请稍候")
             return
         sid = session_id or self.session_id
-        payload = {"session_id": sid, "text": text, "mode": mode}
+        payload = {"session_id": sid, "text": text}
         worker = SseWorker(
             f"{self.base_url}/v1/chat",
             payload,

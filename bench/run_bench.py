@@ -70,18 +70,18 @@ def _read_ready_port(proc: subprocess.Popen, timeout: float) -> int | None:
 
 
 def start_server(timeout: float = 25.0) -> tuple[str, str, subprocess.Popen]:
-    """拉起 `python -m server --port 0`，返回 (base_url, token, proc)"""
+    """拉起 `python -m backend --port 0`，返回 (base_url, token, proc)"""
     token = os.environ.get("HADALI_TOKEN") or secrets.token_urlsafe(32)
     env = os.environ.copy()
     env["HADALI_TOKEN"] = token
     proc = subprocess.Popen(
-        [sys.executable, "-m", "server", "--host", "127.0.0.1", "--port", "0"],
+        [sys.executable, "-m", "backend", "--host", "127.0.0.1", "--port", "0"],
         cwd=str(ROOT), env=env, stdout=subprocess.PIPE, text=True,
     )
     port = _read_ready_port(proc, timeout)
     if port is None:
         proc.terminate()
-        raise SystemExit("后端启动超时，请先用 `python -m server --port 8765` 手动启动")
+        raise SystemExit("后端启动超时，请先用 `python -m backend --port 8765` 手动启动")
     base_url = f"http://127.0.0.1:{port}"
     deadline = time.time() + timeout
     probe_client = httpx.Client(timeout=0.3)

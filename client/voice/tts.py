@@ -29,29 +29,14 @@ import traceback
 
 import numpy as np
 
+from utils.env_utils import load_env
 from utils.path_tool import get_abs_path
 
 # .env 位于项目根目录（按项目根定位，保证任意工作目录启动均可找到）
 _ENV_PATH = get_abs_path('.env')
 
-
-def _load_env() -> dict:
-    """解析 .env 文件（key=value 格式，跳过注释与空行），与 chatbot.py 保持一致的轻量实现"""
-    env = {}
-    try:
-        with open(_ENV_PATH, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#') or '=' not in line:
-                    continue
-                key, _, value = line.partition('=')
-                env[key.strip()] = value.strip().strip('"').strip("'")
-    except FileNotFoundError:
-        pass
-    return env
-
-
-_ENV = _load_env()
+# 缺失 .env 时使用空配置，TTS 仍可用 edge-tts 兜底
+_ENV = load_env(_ENV_PATH, missing_ok=True)
 
 # ---- 配置常量 ----
 # TTS 运行模式：demo = 优先 qwen3-tts + edge-tts 兜底；dev = 仅 edge-tts

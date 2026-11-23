@@ -7,7 +7,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from tools.common.weather import _WIND_DIR_CN, _WEATHER_CN, get_weather
+from backend.agent.tools.weather import _WIND_DIR_CN, _WEATHER_CN, get_weather
 
 
 class TestWeatherCnMapping:

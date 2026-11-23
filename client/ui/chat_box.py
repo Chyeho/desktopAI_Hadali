@@ -84,6 +84,40 @@ class ChatBox(QTextEdit):
         self._typing_pos = 0
         self._typing_timer.start(self.TYPE_INTERVAL)
 
+    def begin_ai_reply(self):
+        """流式回复开始：清空并显示“哈达莉：”，等待逐 token 追加"""
+        self._typing_timer.stop()
+        self.state = 'reply'
+        self.prefix_visible = False
+        self.allow_reset = False
+        self.setReadOnly(True)
+        self.setPlainText("哈达莉：")
+        self.moveCursor(QTextCursor.MoveOperation.End)
+
+    def append_ai_delta(self, text):
+        """流式增量追加：直接把 token 插到末尾，不做打字机"""
+        if self.state != 'reply':
+            self.begin_ai_reply()
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text)
+        self.moveCursor(QTextCursor.MoveOperation.End)
+        vbar = self.verticalScrollBar()
+        vbar.setValue(vbar.maximum())
+
+    def finish_ai_reply(self, text=None):
+        """流式回复结束：可用最终干净文本校正展示，并允许点击恢复输入态"""
+        self._typing_timer.stop()
+        self.state = 'reply'
+        self.prefix_visible = False
+        self.allow_reset = True
+        if text is not None:
+            # 流式增量未经最终清洗（可能含模型复述的时间戳），以 text.done 为准覆盖
+            self.setPlainText(f"哈达莉：{text}")
+            self.moveCursor(QTextCursor.MoveOperation.End)
+            vbar = self.verticalScrollBar()
+            vbar.setValue(vbar.maximum())
+
     def show_error(self, message):
         """错误提示：直接显示完整错误信息（不走打字机），点击即可回到输入态"""
         self._typing_timer.stop()

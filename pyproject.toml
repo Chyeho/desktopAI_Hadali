@@ -23,6 +23,9 @@ dependencies = [
     "uvicorn>=0.54.0",
     "httpx>=0.28.1",
     "httpx-sse>=0.4.3",
+    "langgraph-jev-router==0.2.0",
+    "langchain-mcp-adapters>=0.3.2",
+    "mcp>=1.30.0",
 ]
 
 [dependency-groups]
@@ -31,6 +34,10 @@ dev = ["pytest>=8.0"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+norecursedirs = ["archive"]
+markers = [
+    "live: 需要真实模型与网络的实时冒烟（RUN_LIVE_EVALS=1）",
+]
 
 # 国内镜像源配置（替换默认源）
 [tool.uv]

@@ -25,6 +25,7 @@ coverage.xml
 
 # 运行时生成文件
 screenshot.png
+.screenshots
 *.log
 logs/
 
@@ -33,6 +34,9 @@ bench/result.csv
 
 # 运行时数据（对话历史，含用户聊天记录，禁止提交）
 chat_history/
+
+# MCP 真实配置（可能含密钥/内网地址），仅提交 example
+config/mcp_servers.json
 
 # 本地模型缓存（huggingface 等）
 .cache/
@@ -46,3 +50,12 @@ GenieTTSData/
 .vscode/
 Thumbs.db
 .DS_Store
+
+live2dmascot/
+
+# 评测需求参考文档（仅本地参考，禁止提交）
+agent评测体系说明文档.md
+
+
+# 评测运行产物
+evals/reports/

@@ -1,1 +1,2 @@
 system_prompt_path: prompts/system_prompt.txt
+graph_system_prompt_path: prompts/graph_companion_prompt.txt

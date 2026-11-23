@@ -1,0 +1,66 @@
+'''M5 流式契约用例：delta 拼接等于最终 reply、情绪合法、无标签与时间泄漏'''
+
+STREAM_CASES = [
+    {
+        "id": "stream_contract_01",
+        "category": "stream",
+        "description": "流式增量拼接等于 done.reply，无情绪标签与时间标记",
+        "input": "今天好累呀",
+        "scripted_reply": "[emotion:happy] 今天也辛苦啦，先喝口水休息一下。",
+        "streaming": True,
+        "expect": {
+            "emotion": "happy",
+            "emotion_valid": True,
+            "deltas_join_equals_reply": True,
+            "deltas_no_emotion_tag": True,
+            "deltas_clean": True,
+            "final_clean": True,
+            "final_contains_any": ("辛苦", "休息"),
+        },
+    },
+    {
+        "id": "stream_emotion_split_02",
+        "category": "stream",
+        "description": "情绪标签与正文跨 token：标签被完整剥离，增量拼接等于最终回复",
+        "input": "你今天真好看",
+        "scripted_reply": "[emotion:shy]\n被你夸得有点不好意思啦。",
+        "streaming": True,
+        "expect": {
+            "emotion": "shy",
+            "emotion_valid": True,
+            "deltas_join_equals_reply": True,
+            "deltas_no_emotion_tag": True,
+            "final_clean": True,
+        },
+    },
+    {
+        "id": "stream_time_marker_03",
+        "category": "stream",
+        "description": "模型复述时间标记：流式增量与最终回复都不含时间字符串",
+        "input": "现在几点了？",
+        "scripted_reply": "[emotion:neutral] 现在是 [2026-11-21 14:30]，该吃饭啦。",
+        "streaming": True,
+        "expect": {
+            "emotion": "neutral",
+            "deltas_join_equals_reply": True,
+            "deltas_clean": True,
+            "final_clean": True,
+            "final_contains_any": ("吃饭",),
+        },
+    },
+    {
+        "id": "stream_invalid_emotion_04",
+        "category": "stream",
+        "description": "非法情绪标签：回退 neutral，流式增量不含标签",
+        "input": "陪我说说话",
+        "scripted_reply": "[emotion:melancholy] 我陪着你，慢慢说。",
+        "streaming": True,
+        "expect": {
+            "emotion": "neutral",
+            "emotion_valid": True,
+            "deltas_join_equals_reply": True,
+            "deltas_no_emotion_tag": True,
+            "final_contains_any": ("陪你", "慢慢"),
+        },
+    },
+]
