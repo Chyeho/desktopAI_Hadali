@@ -17,7 +17,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from agent.chat_agent import HistoryStore
+from agent.history import HistoryStore
 from agent.expression_driver import VALID_EMOTIONS
 from agent.graph.emotion import parse_emotion_tag
 from agent.graph.main_graph import build_main_graph

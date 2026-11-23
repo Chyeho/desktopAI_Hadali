@@ -5,7 +5,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
-from agent.chat_agent import HistoryStore
+from agent.history import HistoryStore
 from agent.graph.main_graph import build_main_graph, route_after_perception
 from agent.graph.runner import CompanionGraphAgent
 

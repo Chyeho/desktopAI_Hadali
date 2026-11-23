@@ -1,6 +1,6 @@
 '''图引擎的工具装配
 
-- 通用工具：天气、搜索，从 ToolManager 注册表取对象（时间能力已迁至 utils，不在注册表）
+- 通用工具：天气、搜索，由主图自持注册表加载（时间能力已迁至 utils，不在注册表）
 - MCP 工具：按 config/mcp_servers.json 可选加载，未配置/异常/超时一律降级为空
 - 工具分组：general 默认挂载；office 预留给“办公按需加载”，本阶段为空
 '''
@@ -12,7 +12,8 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from agent.tool_manager import ToolManager
+from tools.common.weather import get_weather
+from tools.common.web_search import web_search
 from utils.logger_handler import logger
 from utils.path_tool import get_abs_path
 
@@ -23,6 +24,11 @@ except Exception:  # 适配器缺失时不阻断启动，MCP 直接降级
 
 # 通用工具白名单（名称与 tools/ 下 @tool 函数名一致）
 BASE_TOOL_NAMES = ("get_weather", "web_search")
+# 主图自持的基础工具注册表：不再依赖 legacy ToolManager
+BASE_TOOL_MAP: dict[str, BaseTool] = {
+    get_weather.name: get_weather,
+    web_search.name: web_search,
+}
 # 已迁出的时间工具名：若后续误注册，构造时剔除
 TIME_TOOL_NAME = "get_current_time"
 # 办公工具组（预留，后续按需挂载文件/表格等轻量工具）
@@ -215,7 +221,7 @@ def get_agent_tools() -> list[BaseTool]:
     '''返回 agent 可用的通用工具列表（惰性构建并缓存）'''
     global _agent_tools
     if _agent_tools is None:
-        tools = ToolManager().get_tools(list(BASE_TOOL_NAMES))
+        tools = [BASE_TOOL_MAP[name] for name in BASE_TOOL_NAMES if name in BASE_TOOL_MAP]
         tools.extend(load_mcp_tools())
         _agent_tools = _sanitize_tools(tools)
         logger.info(f"[graph.tooling]agent_tools：{[t.name for t in _agent_tools]}")

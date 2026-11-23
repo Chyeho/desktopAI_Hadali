@@ -17,7 +17,8 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from agent.chat_agent import HistoryStore, TurnResult
+from agent.history import HistoryStore
+from agent.turn import TurnResult
 from agent.graph.emotion import EmotionStreamFilter, parse_emotion_tag
 from agent.graph.main_graph import build_main_graph
 from utils.logger_handler import logger

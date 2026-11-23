@@ -5,7 +5,7 @@ set_mode / current_mode / model_name / turns_file，测试可注入同名鸭子�
 '''
 from fastapi import Request
 
-from agent.chat_agent import TurnResult
+from agent.turn import TurnResult
 from agent.mode_configs import DEFAULT_MODE, MODE_REGISTRY
 from core import facade
 from core.session import SessionManager

@@ -19,13 +19,8 @@ from langchain_core.messages import (
 )
 from langchain_core.tools import tool
 
-from agent.chat_agent import (
-    HISTORY_WINDOW,
-    MAX_TOOL_STEPS,
-    ChatAgent,
-    HistoryStore,
-    parse_reply_json,
-)
+from agent.chat_agent import MAX_TOOL_STEPS, ChatAgent, parse_reply_json
+from agent.history import HISTORY_WINDOW, HistoryStore
 
 
 # =====================================================================

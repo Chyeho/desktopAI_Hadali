@@ -10,9 +10,10 @@ client 由自身保存 agent 引用与部分回复状态（P1 过渡期见根 ch
 '''
 import os
 
-from agent.chat_agent import ChatAgent, TurnResult
+from agent.chat_agent import ChatAgent
+from agent.turn import TurnResult
+from agent.graph.config import GRAPH_MODEL_PARAMS
 from agent.graph.runner import CompanionGraphAgent
-from agent.mode_configs import DEFAULT_MODE, MODE_REGISTRY
 from agent.tool_manager import ToolManager
 from modelFactory.factory import ChatModelFactory
 from utils.env_utils import load_env
@@ -49,9 +50,7 @@ def create_agent(api_key: str,
     factory = factory_cls(api_key=api_key, base_url=base_url, model=model)
     engine = resolve_engine(engine)
     if engine == "graph":
-        # 沿用情感陪伴模式的生成参数，保证与 legacy 引擎输出风格一致
-        params = MODE_REGISTRY[DEFAULT_MODE].get("model_params", {})
-        llm = factory.generator(**params)
+        llm = factory.generator(**GRAPH_MODEL_PARAMS)
         return CompanionGraphAgent(llm=llm, history_file=history_file)
     return ChatAgent(
         model_factory=factory,

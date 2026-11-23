@@ -12,120 +12,22 @@
 本模块不依赖 UI：情感标签只做合法性校验，live2d 表情动画由 client 层负责。
 '''
 import json
-import os
 import re
 import time
-from typing import TypedDict
 
-from langchain_core.messages import (
-    AIMessage,
-    BaseMessage,
-    HumanMessage,
-    SystemMessage,
-    ToolMessage,
-    message_to_dict,
-    messages_from_dict,
-)
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from modelFactory.factory import ChatModelFactory
+from agent.history import HistoryStore
 from agent.tool_manager import ToolManager
+from agent.turn import ToolCallRecord, TurnResult
 from agent.mode_configs import DEFAULT_MODE, MODE_REGISTRY
 from agent.expression_driver import validate_emotion
 from utils.prompt_loader import load_prompt
-from utils.path_tool import get_abs_path
 from utils.logger_handler import logger
 
 # 单次对话中工具调用的最大轮数（防止模型反复调用工具形成死循环）
 MAX_TOOL_STEPS = 6
-# 历史记忆保留的最近消息条数（不含 system 消息），超出后裁剪旧消息，避免 token 膨胀
-HISTORY_WINDOW = 30
-# 历史消息持久化目录与文件（当前单用户单会话，固定一个文件；未来多会话时按会话 ID 区分）
-HISTORY_DIR = get_abs_path("chat_history")
-HISTORY_FILE = os.path.join(HISTORY_DIR, "default.json")
-
-
-class ToolCallRecord(TypedDict):
-    '''一次工具调用的结构化记录'''
-    name: str            # 工具名
-    args: dict           # 模型给出的入参
-    ok: bool             # 是否执行成功
-    duration_ms: float   # 执行耗时（毫秒）
-
-
-class TurnResult(TypedDict):
-    '''一轮对话的结构化结果（运行时即普通 dict，便于序列化与向后兼容）'''
-    emotion: str                    # 情感标签（已校验，非法值回退 neutral）
-    reply: str                      # 剥离情感标签后的回复文本
-    mode: str                       # 本轮使用的 agent 模式名
-    steps: int                      # 实际模型调用轮数
-    tool_calls: list[ToolCallRecord]  # 本轮工具调用记录
-    latency_ms: float               # 整轮耗时（毫秒）
-
-
-class HistoryStore:
-    '''对话历史持久化存储（JSON 文件）
-
-    使用 langchain 的 message_to_dict / messages_from_dict 做序列化，
-    完整保留 Human / AIMessage（含 tool_calls）/ Tool / System 各类消息。
-    '''
-
-    def __init__(self, file_path: str = HISTORY_FILE):
-        self.file_path = file_path
-        os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
-        self.messages: list[BaseMessage] = self._load()
-
-    def _load(self) -> list[BaseMessage]:
-        '''从文件加载历史消息，防御文件不存在/为空/损坏'''
-        if not os.path.exists(self.file_path) or os.path.getsize(self.file_path) == 0:
-            return []
-        try:
-            with open(self.file_path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-            if not content:
-                return []
-            return messages_from_dict(json.loads(content))
-        except Exception as e:
-            logger.error(f"[HistoryStore]历史消息文件损坏或解析失败：{str(e)}，已重置为空")
-            return []
-
-    def save(self) -> None:
-        '''将当前消息列表持久化到文件'''
-        try:
-            data = [message_to_dict(m) for m in self.messages]
-            with open(self.file_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"[HistoryStore]历史消息写入失败：{str(e)}")
-
-    def append(self, message: BaseMessage) -> None:
-        '''追加一条消息并裁剪超长历史'''
-        self.messages.append(message)
-        self._trim()
-
-    def replace(self, messages: list[BaseMessage]) -> None:
-        '''整体替换历史并裁剪保存（LangGraph 引擎的 JSON 镜像使用）'''
-        self.messages = list(messages)
-        self._trim()
-        self.save()
-
-    def _trim(self) -> None:
-        '''裁剪历史：始终保留 system 消息，其余只保留最近 HISTORY_WINDOW 条'''
-        system_msgs = [m for m in self.messages if isinstance(m, SystemMessage)]
-        others = [m for m in self.messages if not isinstance(m, SystemMessage)]
-        if len(others) > HISTORY_WINDOW:
-            others = others[-HISTORY_WINDOW:]
-        self.messages = system_msgs + others
-
-    def set_system_prompt(self, prompt: str) -> None:
-        '''更新 system 消息（初始化或切换模式时调用）'''
-        self.messages = [m for m in self.messages if not isinstance(m, SystemMessage)]
-        if prompt:
-            self.messages.insert(0, SystemMessage(content=prompt))
-
-    def clear(self) -> None:
-        '''清空历史'''
-        self.messages = []
-        self.save()
 
 
 def parse_reply_json(content: str) -> tuple[str, str]:
