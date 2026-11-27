@@ -340,3 +340,40 @@ def assert_expect(result: dict, expect: dict) -> None:
     if expect.get("restored_no_tool_calls"):
         if result.get("restored_tool_call_count"):
             _fail("restored_no_tool_calls", 0, result.get("restored_tool_call_count"), result)
+
+
+def run_with_retry(case: dict, runner=None) -> tuple[dict, int]:
+    '''执行一条用例并按 expect 断言，失败时最多重试 max_retries 次
+
+    阶段一约定：默认 max_retries = 0（确定性用例不重试，行为与 run_case 一致）。
+    只有声明了 max_retries 的用例（如依赖真实 LLM 路由的 M2）才会重跑，
+    任一次通过即算通过；实际重试次数写入报告，让不稳定用例暴露出来，
+    而不是靠调低 temperature 掩盖非确定性。
+
+    参数：
+        case   : 声明式用例 dict
+        runner : 可选执行器，签名同 run_case(case) -> result；默认 run_case
+    返回：
+        (result, retry_count)
+    '''
+    from evals.reporting import record_retry
+
+    runner = runner or run_case
+    max_retries = int(case.get("max_retries") or 0)
+    case_id = case.get("id", "")
+    last_error: AssertionError | None = None
+
+    for attempt in range(max_retries + 1):
+        result = runner(case)
+        try:
+            assert_expect(result, case.get("expect") or {})
+        except AssertionError as exc:
+            last_error = exc
+            continue
+        record_retry(case_id, attempt)
+        return result, attempt
+
+    record_retry(case_id, max_retries)
+    if last_error is not None:
+        raise last_error
+    raise AssertionError(f"用例 {case_id} 未产生断言结果")

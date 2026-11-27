@@ -2,10 +2,9 @@
 import pytest
 
 from evals.cases.routing_cases import ROUTING_CASES
-from evals.runners.graph_runner import assert_expect, run_case
+from evals.runners.graph_runner import run_with_retry
 
 
 @pytest.mark.parametrize("case", ROUTING_CASES, ids=[case["id"] for case in ROUTING_CASES])
 def test_routing_case(case):
-    result = run_case(case)
-    assert_expect(result, case["expect"])
+    run_with_retry(case)
