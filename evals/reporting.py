@@ -9,6 +9,18 @@ REPORT_PATH = REPORT_DIR / "latest.json"
 
 _RESULTS: dict[str, dict] = {}
 _RECORDED: set[str] = set()
+# 用例实际重试次数（由 runners 写入），用于让非确定性用例暴露出来
+_RETRY_COUNTS: dict[str, int] = {}
+
+
+def record_retry(case_id: str, count: int) -> None:
+    '''记录一条用例的实际重试次数'''
+    _RETRY_COUNTS[case_id] = count
+
+
+def get_retry_count(case_id: str) -> int:
+    '''读取一条用例的实际重试次数；未记录时为 0'''
+    return _RETRY_COUNTS.get(case_id, 0)
 
 
 def record_report(nodeid: str, case: dict, report) -> None:
@@ -34,6 +46,7 @@ def record_report(nodeid: str, case: dict, report) -> None:
         "outcome": outcome,
         "passed": outcome == "passed",
         "duration_ms": round(report.duration * 1000, 1),
+        "retry_count": get_retry_count(case.get("id", nodeid)),
         "failure": failure,
     }
 
@@ -54,6 +67,8 @@ def write_report() -> None:
         "skipped": sum(1 for item in items if item["outcome"] == "skipped"),
         "pass_rate": round(passed * 100 / len(items), 1),
         "by_category": dict(sorted(by_category.items())),
+        "total_retries": sum(item["retry_count"] for item in items),
+        "retried_cases": [item["id"] for item in items if item["retry_count"] > 0],
         "slowest": [
             {
                 "id": item["id"],
